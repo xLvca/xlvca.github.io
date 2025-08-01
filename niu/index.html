@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIU Scooter BLE Interface</title>
+  <style>
+    body {
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: start;
+      height: 100vh;
+      padding: 1rem;
+    }
+    button {
+      background-color: #1f1f1f;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 5px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #333;
+    }
+    pre {
+      background-color: #1e1e1e;
+      padding: 1rem;
+      border-radius: 5px;
+      max-width: 90vw;
+      overflow-x: auto;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>NIU Scooter BLE Interface</h1>
+  <div class="controls">
+    <button onclick="connectToScooter()">🔌 Connect</button>
+    <button onclick="sendAuthSequence()">🔐 Authenticate</button>
+    <button onclick="readBatteryStatus()">🔋 Battery</button>
+    <button onclick="readVersionInfo()">🧬 Version</button>
+    <button onclick="readLockStatus()">🔒 Lock Status</button>
+    <button onclick="lockScooter()">🔐 Lock</button>
+    <button onclick="unlockScooter()">🔓 Unlock</button>
+    <button onclick="readGPSStatus()">🧭 GPS</button>
+    <button onclick="startDump()">📦 Dump</button>
+  </div>
+  <pre id="log">Log:
+</pre>
+
+  <script>
+    let device, server, service, characteristic;
+
+    const SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb';
+    const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
+
+    function log(message) {
+      const el = document.getElementById('log');
+      el.textContent += `\n> ${message}`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    async function connectToScooter() {
+      try {
+        log('Requesting Bluetooth device...');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'NIU' }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        log('Connecting...');
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+        characteristic = await service.getCharacteristic(CHAR_WRITE_UUID);
+
+        log('Connected to NIU scooter.');
+      } catch (error) {
+        log('Error: ' + error);
+      }
+    }
+
+    async function sendAuthSequence() {
+      if (!characteristic) return log('Not connected.');
+      const key = new Uint8Array([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0x41,0x42,0x43,0x44,0x45,0x46]);
+      const data = new TextEncoder().encode('auth_challenge');
+      const encrypted = await aesEncrypt(key, data);
+      await characteristic.writeValue(encrypted);
+      log('Encrypted auth token sent.');
+    }
+
+    async function aesEncrypt(keyBytes, dataBytes) {
+      const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
+      const iv = new Uint8Array(16);
+      const encrypted = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: iv }, key, dataBytes);
+      return new Uint8Array(encrypted);
+    }
+
+    async function writeCommand(cmd) {
+      if (!characteristic) return log('Not connected.');
+      await characteristic.writeValue(cmd);
+    }
+
+    async function readBatteryStatus() {
+      const cmd = new Uint8Array([0x02, 0x00, 0xB1]);
+      await writeCommand(cmd);
+      log('Battery status requested.');
+    }
+
+    async function readVersionInfo() {
+      const cmd = new Uint8Array([0x02, 0x00, 0xA4]);
+      await writeCommand(cmd);
+      log('Version info requested.');
+    }
+
+    async function readLockStatus() {
+      const cmd = new Uint8Array([0x02, 0x00, 0xA2]);
+      await writeCommand(cmd);
+      log('Lock status requested.');
+    }
+
+    async function lockScooter() {
+      const cmd = new Uint8Array([0x05, 0x00, 0xA1, 0x01, 0x01]);
+      await writeCommand(cmd);
+      log('Lock command sent.');
+    }
+
+    async function unlockScooter() {
+      const cmd = new Uint8Array([0x05, 0x00, 0xA1, 0x01, 0x00]);
+      await writeCommand(cmd);
+      log('Unlock command sent.');
+    }
+
+    async function readGPSStatus() {
+      const cmd = new Uint8Array([0x02, 0x00, 0xB3]);
+      await writeCommand(cmd);
+      log('GPS status requested.');
+    }
+
+    async function startDump() {
+      const cmd = new Uint8Array([0x02, 0x00, 0xE1]);
+      await writeCommand(cmd);
+      log('Firmware dump request sent (if supported).');
+    }
+  </script>
+</body>
+</html>
