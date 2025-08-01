@@ -43,7 +43,7 @@
   </style>
 </head>
 <body>
-  <h1>🛴 Scooter BLE Web Utility</h1>
+  <h1>🚴️ Scooter BLE Web Utility</h1>
 
   <div class="section">
     <button onclick="connectScooter()">🔗 Connect</button>
@@ -67,7 +67,7 @@
 
   <div class="section">
     <button onclick="readSerial()">🔎 Read Serial</button>
-    <button onclick="toggleESC()">🧩 Toggle ESC Mode</button>
+    <button onclick="toggleESC()">🧹 Toggle ESC Mode</button>
   </div>
 
   <div id="output">Status: Not connected.</div>
@@ -110,6 +110,14 @@
       const value = event.target.value;
       const bytes = new Uint8Array(value.buffer);
       output(`Received: ${hex(bytes)}`);
+
+      if (bytes.length >= 4 && bytes[0] === 0xF0 && bytes[2] === 0x21 && bytes[3] === 0x02) {
+        if (bytes[4] === 0x01) {
+          output("Authentication successful.");
+        } else {
+          output("Authentication failed (Error 2).");
+        }
+      }
     }
 
     async function sendF3() {
