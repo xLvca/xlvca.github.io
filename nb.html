@@ -101,9 +101,13 @@
 
     async function sendAuth() {
       if (!writeChar) return output("Not connected");
-      const authCmd = Uint8Array.from([0xF0, 0x0A, 0x21, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-      await writeChar.writeValue(authCmd);
-      output("Auth command sent. Press the power button if required.");
+      // Auth command logic used in SHU (ScooterHackingUtility)
+      // Payload = [0x21, 0x01, 0x00, ... zeroed ...], last byte is checksum
+      const payload = [0x21, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+      let checksum = payload.reduce((sum, val) => sum + val, 0) & 0xFF;
+      const full = Uint8Array.from([0xF0, payload.length, ...payload, checksum]);
+      await writeChar.writeValue(full);
+      output("Auth command sent (SHU style). Press power button.");
     }
 
     async function changeRegion() {
