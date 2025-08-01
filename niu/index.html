@@ -2,103 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>NIU BLE UUID Auto Connect</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scooter BLE Web Utility</title>
   <style>
-    body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 1rem; }
-    textarea, button { width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #555; border-radius: 5px; padding: 10px; margin-top: 10px; }
-    button:hover { background: #333; }
-    #log { white-space: pre-wrap; background: #1e1e1e; padding: 1rem; border-radius: 5px; margin-top: 1rem; max-height: 50vh; overflow-y: auto; }
+    body { font-family: sans-serif; margin: 2em; background: #f3f3f3; color: #333; }
+    button, select { padding: 0.5em 1em; margin: 0.5em; }
+    #output { margin-top: 1em; white-space: pre-wrap; background: #fff; padding: 1em; border-radius: 0.5em; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
   </style>
 </head>
 <body>
-  <h1>🔧 NIU BLE Auto Connect</h1>
+  <h1>Scooter BLE Web Utility</h1>
+  <button onclick="connectScooter()">🔗 Connect</button>
+  <button onclick="sendF3()">📊 Request Data (F3)</button>
+  <select id="regionSelect">
+    <option value="0x01">🇪🇺 EU</option>
+    <option value="0x02">🇺🇸 US</option>
+    <option value="0x03">🇷🇺 RU</option>
+  </select>
+  <button onclick="changeRegion()">🌍 Set Region</button>
 
-  <label for="secrets">🔑 BLE Secrets JSON:</label>
-  <textarea id="secrets" rows="3" placeholder='{"bleName":"NIU KQi",...}'></textarea>
-  <button onclick="loadSecrets()">✅ Load Secrets</button>
-  <button onclick="connect()">🔌 Connect to Scooter</button>
-
-  <div id="log">Log:</div>
+  <div id="output">Status: Not connected.</div>
 
   <script>
-    let bleSecrets = {}, device, server, fee7Service, writeChar, notifyChar;
+    let device, server, service, writeChar, notifyChar;
+    const output = msg => document.getElementById('output').textContent += `\n${msg}`;
 
-    const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
-    const CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
-
-    function log(msg) {
-      const logEl = document.getElementById('log');
-      logEl.textContent += `\n${msg}`;
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    function loadSecrets() {
+    async function connectScooter() {
       try {
-        const raw = document.getElementById('secrets').value;
-        bleSecrets = JSON.parse(raw);
-        if (!bleSecrets.bleName) throw new Error("Missing bleName.");
-        log("✅ BLE Secrets geladen");
-      } catch (e) {
-        log("❌ Fehler beim Laden der Secrets: " + e.message);
-      }
-    }
-
-    async function connect() {
-      if (!bleSecrets.bleName) return log("❌ Keine Secrets geladen.");
-      try {
-        log("🔎 Suche nach Scooter: " + bleSecrets.bleName);
         device = await navigator.bluetooth.requestDevice({
-          filters: [{ name: bleSecrets.bleName }],
-          optionalServices: ['battery_service', 'device_information'] // keine spezifische UUID erzwingen
+          filters: [{ services: ['0000ffe0-0000-1000-8000-00805f9b34fb'] }]
         });
+        output(`Device selected: ${device.name}`);
 
-        log("📶 Verbinde...");
         server = await device.gatt.connect();
+        output("Connected to GATT server. Press the power button on your scooter if needed.");
 
-        const allServices = await server.getPrimaryServices();
-        log(`🔍 ${allServices.length} Services gefunden:`);
+        service = await server.getPrimaryService("0000ffe0-0000-1000-8000-00805f9b34fb");
+        writeChar = await service.getCharacteristic("0000ffe1-0000-1000-8000-00805f9b34fb");
+        notifyChar = writeChar;
 
-        for (const s of allServices) {
-          log(`- Service: ${s.uuid}`);
-          if (s.uuid.startsWith('0000fee7') || s.uuid === '0000fee7-0000-1000-8000-00805f9b34fb') {
-            fee7Service = s;
-          }
-        }
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener("characteristicvaluechanged", handleNotifications);
+        output("Notifications enabled.");
 
-        if (!fee7Service) {
-          log("❌ fee7-Service nicht gefunden.");
-          return;
-        }
-
-        log("✅ fee7-Service gefunden: " + fee7Service.uuid);
-        const chars = await fee7Service.getCharacteristics();
-
-        for (const c of chars) {
-          if (c.uuid === CHAR_WRITE_UUID) writeChar = c;
-          if (c.uuid === CHAR_NOTIFY_UUID) {
-            notifyChar = c;
-            await notifyChar.startNotifications();
-            notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
-          }
-        }
-
-        if (!writeChar || !notifyChar) {
-          log("❌ Wichtige Characteristics nicht gefunden.");
-          return;
-        }
-
-        log("✅ Verbunden & Characteristics bereit.");
-      } catch (e) {
-        log("❌ Verbindung fehlgeschlagen: " + e.message);
+        await new Promise(r => setTimeout(r, 1000)); // kurze Pause
+        await sendAuth();
+      } catch (error) {
+        output("Error: " + error);
       }
     }
 
-    function handleNotify(event) {
+    function hex(bytes) {
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
+    }
+
+    function handleNotifications(event) {
       const value = event.target.value;
-      const hex = Array.from(new Uint8Array(value.buffer))
-        .map(b => b.toString(16).padStart(2, '0')).join(' ');
-      log("📨 Notification: " + hex);
+      const bytes = new Uint8Array(value.buffer);
+      output(`Received: ${hex(bytes)}`);
+    }
+
+    async function sendF3() {
+      if (!writeChar) return output("Not connected");
+      const f3 = Uint8Array.from([0xF3, 0x00]);
+      await writeChar.writeValue(f3);
+      output("Sent F3 packet");
+    }
+
+    async function changeRegion() {
+      if (!writeChar) return output("Not connected");
+      const regionCode = document.getElementById('regionSelect').value;
+      const regionByte = parseInt(regionCode);
+      const cmd = Uint8Array.from([0xF0, 0x05, 0x20, 0x03, regionByte, 0x00, 0x00]);
+      await writeChar.writeValue(cmd);
+      output(`Region change sent: ${hex(cmd)}`);
+    }
+
+    async function sendAuth() {
+      if (!writeChar) return output("Not connected");
+      const authCmd = Uint8Array.from([0xF0, 0x0A, 0x21, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      await writeChar.writeValue(authCmd);
+      output("Auth command sent. Press the power button on your scooter if required.");
     }
   </script>
 </body>
