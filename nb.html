@@ -5,8 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Scooter BLE Utility</title>
   <style>
-    body { font-family: 'Segoe UI', sans-serif; margin: 2em; background: #121212; color: #fff; }
-    h1 { font-size: 1.8em; color: #00f59f; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 2em;
+      background: #121212;
+      color: #fff;
+    }
+    h1 {
+      font-size: 1.8em;
+      color: #00f59f;
+    }
     button, select {
       padding: 0.6em 1.2em;
       margin: 0.5em;
@@ -16,17 +24,22 @@
       border-radius: 6px;
       cursor: pointer;
     }
-    button:hover { background-color: #00f59f; color: #000; }
+    button:hover {
+      background-color: #00f59f;
+      color: #000;
+    }
     #output {
       margin-top: 1em;
       white-space: pre-wrap;
       background: #1e1e1e;
       padding: 1em;
       border-radius: 0.5em;
-      box-shadow: 0 0 10px rgba(0,255,150,0.1);
+      box-shadow: 0 0 10px rgba(0, 255, 150, 0.1);
       font-family: monospace;
     }
-    .section { margin-bottom: 2em; }
+    .section {
+      margin-bottom: 2em;
+    }
   </style>
 </head>
 <body>
@@ -38,6 +51,8 @@
     <button onclick="lockScooter()">🔒 Lock</button>
     <button onclick="unlockScooter()">🔓 Unlock</button>
     <button onclick="toggleLight()">💡 Toggle Light</button>
+    <button onclick="rebootScooter()">🔄 Reboot</button>
+    <button onclick="shutdownScooter()">⏻ Shutdown</button>
   </div>
 
   <div class="section">
@@ -101,10 +116,8 @@
 
     async function sendAuth() {
       if (!writeChar) return output("Not connected");
-      // Auth command logic used in SHU (ScooterHackingUtility)
-      // Payload = [0x21, 0x01, 0x00, ... zeroed ...], last byte is checksum
       const payload = [0x21, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-      let checksum = payload.reduce((sum, val) => sum + val, 0) & 0xFF;
+      const checksum = payload.reduce((sum, val) => sum + val, 0) & 0xFF;
       const full = Uint8Array.from([0xF0, payload.length, ...payload, checksum]);
       await writeChar.writeValue(full);
       output("Auth command sent (SHU style). Press power button.");
@@ -138,6 +151,20 @@
       const toggleCmd = Uint8Array.from([0xF0, 0x01, 0x11, 0x01]);
       await writeChar.writeValue(toggleCmd);
       output("Toggled light");
+    }
+
+    async function rebootScooter() {
+      if (!writeChar) return output("Not connected");
+      const rebootCmd = Uint8Array.from([0xF0, 0x01, 0x26, 0x01]);
+      await writeChar.writeValue(rebootCmd);
+      output("Sent reboot command");
+    }
+
+    async function shutdownScooter() {
+      if (!writeChar) return output("Not connected");
+      const shutdownCmd = Uint8Array.from([0xF0, 0x01, 0x26, 0x02]);
+      await writeChar.writeValue(shutdownCmd);
+      output("Sent shutdown command");
     }
   </script>
 </body>
