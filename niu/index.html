@@ -3,39 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>NIU P100 BLE Web</title>
+  <title>NIU BLE UUID Auto Connect</title>
   <style>
-    body {
-      background: #121212;
-      color: #e0e0e0;
-      font-family: sans-serif;
-      padding: 1rem;
-    }
-    textarea, button {
-      width: 100%;
-      background: #1e1e1e;
-      color: #fff;
-      border: 1px solid #555;
-      border-radius: 5px;
-      padding: 10px;
-      margin-top: 10px;
-    }
-    button:hover {
-      background: #333;
-    }
-    #log {
-      white-space: pre-wrap;
-      background: #1e1e1e;
-      padding: 1rem;
-      border-radius: 5px;
-      margin-top: 1rem;
-      max-height: 50vh;
-      overflow-y: auto;
-    }
+    body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 1rem; }
+    textarea, button { width: 100%; background: #1e1e1e; color: #fff; border: 1px solid #555; border-radius: 5px; padding: 10px; margin-top: 10px; }
+    button:hover { background: #333; }
+    #log { white-space: pre-wrap; background: #1e1e1e; padding: 1rem; border-radius: 5px; margin-top: 1rem; max-height: 50vh; overflow-y: auto; }
   </style>
 </head>
 <body>
-  <h1>🔧 NIU BLE Web Interface</h1>
+  <h1>🔧 NIU BLE Auto Connect</h1>
 
   <label for="secrets">🔑 BLE Secrets JSON:</label>
   <textarea id="secrets" rows="3" placeholder='{"bleName":"NIU KQi",...}'></textarea>
@@ -45,9 +22,8 @@
   <div id="log">Log:</div>
 
   <script>
-    let bleSecrets = {}, device, server, service, writeChar, notifyChar;
+    let bleSecrets = {}, device, server, fee7Service, writeChar, notifyChar;
 
-    const SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb';
     const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
     const CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
 
@@ -61,9 +37,7 @@
       try {
         const raw = document.getElementById('secrets').value;
         bleSecrets = JSON.parse(raw);
-        if (!bleSecrets.bleName || !bleSecrets.blePassword || !bleSecrets.bleSign || !bleSecrets.bleAes || !bleSecrets.bleMac) {
-          throw new Error("Missing fields.");
-        }
+        if (!bleSecrets.bleName) throw new Error("Missing bleName.");
         log("✅ BLE Secrets geladen");
       } catch (e) {
         log("❌ Fehler beim Laden der Secrets: " + e.message);
@@ -76,24 +50,45 @@
         log("🔎 Suche nach Scooter: " + bleSecrets.bleName);
         device = await navigator.bluetooth.requestDevice({
           filters: [{ name: bleSecrets.bleName }],
-          optionalServices: [
-            SERVICE_UUID,
-            CHAR_WRITE_UUID,
-            CHAR_NOTIFY_UUID,
-            '0000180f-0000-1000-8000-00805f9b34fb', // Battery
-            '0000180a-0000-1000-8000-00805f9b34fb'  // Device Info
-          ]
+          optionalServices: ['battery_service', 'device_information'] // keine spezifische UUID erzwingen
         });
 
         log("📶 Verbinde...");
         server = await device.gatt.connect();
-        service = await server.getPrimaryService(SERVICE_UUID);
-        writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
-        notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
 
-        await notifyChar.startNotifications();
-        notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
-        log("✅ Verbunden & lausche auf Benachrichtigungen.");
+        const allServices = await server.getPrimaryServices();
+        log(`🔍 ${allServices.length} Services gefunden:`);
+
+        for (const s of allServices) {
+          log(`- Service: ${s.uuid}`);
+          if (s.uuid.startsWith('0000fee7') || s.uuid === '0000fee7-0000-1000-8000-00805f9b34fb') {
+            fee7Service = s;
+          }
+        }
+
+        if (!fee7Service) {
+          log("❌ fee7-Service nicht gefunden.");
+          return;
+        }
+
+        log("✅ fee7-Service gefunden: " + fee7Service.uuid);
+        const chars = await fee7Service.getCharacteristics();
+
+        for (const c of chars) {
+          if (c.uuid === CHAR_WRITE_UUID) writeChar = c;
+          if (c.uuid === CHAR_NOTIFY_UUID) {
+            notifyChar = c;
+            await notifyChar.startNotifications();
+            notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
+          }
+        }
+
+        if (!writeChar || !notifyChar) {
+          log("❌ Wichtige Characteristics nicht gefunden.");
+          return;
+        }
+
+        log("✅ Verbunden & Characteristics bereit.");
       } catch (e) {
         log("❌ Verbindung fehlgeschlagen: " + e.message);
       }
@@ -102,8 +97,7 @@
     function handleNotify(event) {
       const value = event.target.value;
       const hex = Array.from(new Uint8Array(value.buffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join(' ');
+        .map(b => b.toString(16).padStart(2, '0')).join(' ');
       log("📨 Notification: " + hex);
     }
   </script>
