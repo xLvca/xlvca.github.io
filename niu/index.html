@@ -2,178 +2,122 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NIU P100 BLE Interface</title>
+  <title>NIU P100 BLE Web App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { background:#121212;color:#e0e0e0;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:start;height:100vh;padding:1rem }
-    button { background:#1f1f1f;border:1px solid #444;color:#fff;padding:10px 20px;border-radius:5px;margin:5px;cursor:pointer }
-    button:hover { background:#333 }
-    pre { background:#1e1e1e;padding:1rem;border-radius:5px;max-width:90vw;overflow-x:auto }
-    .controls { display:flex;flex-wrap:wrap;justify-content:center;gap:10px }
+    body { background: #121212; color: #eee; font-family: monospace; padding: 1rem; }
+    h1 { text-align: center; }
+    button, input[type="file"] {
+      background: #1f1f1f; color: #eee; border: 1px solid #555; padding: 8px 14px;
+      margin: 5px; border-radius: 4px; cursor: pointer;
+    }
+    button:hover { background: #333; }
+    #log { background: #1e1e1e; padding: 1rem; white-space: pre-wrap; max-height: 300px; overflow-y: scroll; border-radius: 5px; }
   </style>
 </head>
 <body>
-<h1>NIU P100 Scooter BLE Interface</h1>
-<div class="controls">
-  <button onclick="connectToScooter()">🔌 Connect</button>
-  <button onclick="sendAuthSequence()">🔐 Authenticate</button>
-  <button onclick="readBatteryStatus()">🔋 Battery</button>
-  <button onclick="readVersionInfo()">🧬 Version</button>
-  <button onclick="readLockStatus()">🔒 Lock Status</button>
-  <button onclick="lockScooter()">🔐 Lock</button>
-  <button onclick="unlockScooter()">🔓 Unlock</button>
-  <button onclick="readGPSStatus()">🧭 GPS</button>
-  <button onclick="startDump()">📦 Dump</button>
-  <button onclick="readOdometer()">🛞 Odometer</button>
-  <button onclick="readRideMode()">⚙️ Ride Mode</button>
-  <button onclick="readMCUStatus()">🧪 MCU</button>
-  <button onclick="getControllerSN()">🔢 SN</button>
-  <button onclick="readMotorTemp()">🌡️ Motor Temp</button>
-  <button onclick="readVoltage()">🔌 Voltage</button>
-  <button onclick="readFirmwareVersion()">📄 FW Ver</button>
-  <button onclick="enterOTAMode()">🧠 Enter OTA</button>
-  <button onclick="triggerFlash()">⚠️ Flash</button>
-  <button onclick="readBLEMac()">📡 BLE MAC</button>
-  <button onclick="readVehicleStatus()">🚦 Vehicle</button>
-  <button onclick="readAllSensors()">📊 All Sensors</button>
-  <button onclick="readDiagReport()">🧾 Diagnostics</button>
-  <button onclick="readWheelSpeed()">🌀 Wheel Speed</button>
-  <button onclick="readThrottlePosition()">🎚️ Throttle</button>
-  <button onclick="readBrakeStatus()">🛑 Brake</button>
-  <button onclick="readLightingStatus()">💡 Lights</button>
-  <button onclick="readChargeCycles()">🔄 Charge Cycles</button>
-  <button onclick="readBMSHealth()">🩺 BMS</button>
-</div>
-<pre id="log">Log:</pre>
+  <h1>NIU P100 BLE WebApp</h1>
+  <div>
+    <input type="file" id="secretsFile" accept=".json" />
+    <button onclick="loadSecrets()">🔑 Load BLE Secrets</button>
+    <button onclick="connectToScooter()">🔌 Connect</button>
+    <button onclick="readBatteryStatus()">🔋 Battery</button>
+  </div>
+  <pre id="log">Log:</pre>
+
 <script>
-  let device, server, service, characteristic, notifyChar, bleSecrets = null;
+let bleSecrets = null;
+let device, server, service, characteristic, notifyChar;
 
-  const SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb',
-        CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb',
-        CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += "\n" + msg;
+  el.scrollTop = el.scrollHeight;
+}
 
-  function log(m) {
-    const e = document.getElementById("log");
-    e.textContent += `\n> ${m}`;
-    e.scrollTop = e.scrollHeight;
-  }
+// Load secrets from JSON file
+function loadSecrets() {
+  const fileInput = document.getElementById('secretsFile');
+  const file = fileInput.files[0];
+  if (!file) return log("❗ Datei nicht ausgewählt.");
 
-  async function promptSecrets() {
-    const input = prompt('🔐 Füge dein BLE Secrets JSON ein:');
+  const reader = new FileReader();
+  reader.onload = () => {
     try {
-      bleSecrets = JSON.parse(input);
-      const keys = ["bleName", "blePassword", "bleSign", "bleAes", "bleMac"];
-      if (!keys.every(k => k in bleSecrets)) throw new Error("Missing required key");
-      log("✅ BLE Secrets geladen");
+      bleSecrets = JSON.parse(reader.result);
+      log("✅ BLE Secrets geladen:");
+      log(JSON.stringify(bleSecrets, null, 2));
     } catch (e) {
-      alert("❌ Ungültiges JSON: " + e.message);
-      log("❌ Fehler beim Parsen der Secrets");
-      throw e;
+      log("❌ JSON Fehler: " + e.message);
     }
-  }
-
-  async function connectToScooter() {
-    try {
-      if (!bleSecrets) return log("❗ Keine Secrets geladen.");
-      log('🔎 Suche nach Scooter: ' + bleSecrets.bleName);
-      device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: bleSecrets.bleName }],
-        optionalServices: [SERVICE_UUID]
-      });
-      log('📶 Verbinde...');
-      server = await device.gatt.connect();
-      service = await server.getPrimaryService(SERVICE_UUID);
-      characteristic = await service.getCharacteristic(CHAR_WRITE_UUID);
-      notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
-      await notifyChar.startNotifications();
-      notifyChar.addEventListener("characteristicvaluechanged", handleNotifications);
-      log("✅ Verbunden & Listening");
-    } catch (e) {
-      log("❌ Verbindung fehlgeschlagen: " + e);
-    }
-  }
-
-  function handleNotifications(e) {
-    const v = e.target.value;
-    const hex = Array.from(new Uint8Array(v.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-    log("🔔 Notification: " + hex);
-  }
-
-  async function aesEncryptCBC128(keyText, dataText) {
-    const key = new TextEncoder().encode(keyText.padEnd(16));
-    const data = new TextEncoder().encode(dataText);
-    const cryptoKey = await crypto.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['encrypt']);
-    const iv = new Uint8Array(16);
-    const encrypted = await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, cryptoKey, data);
-    return new Uint8Array(encrypted);
-  }
-
-  async function sendAuthSequence() {
-    if (!characteristic || !bleSecrets) return log('❗ Not connected or secrets missing');
-    try {
-      const encrypted = await aesEncryptCBC128(bleSecrets.bleAes, "auth_challenge");
-      await characteristic.writeValue(encrypted);
-      log("✅ Auth Token gesendet");
-    } catch (e) {
-      log("❌ Auth Fehler: " + e.message);
-    }
-  }
-
-  async function writeCommand(c) {
-    if (!characteristic) return log('❗ Nicht verbunden');
-    await characteristic.writeValue(c);
-  }
-
-  const Commands = {
-    readBatteryStatus:    [0x02, 0x00, 0xB1],
-    readVersionInfo:      [0x02, 0x00, 0xA4],
-    readLockStatus:       [0x02, 0x00, 0xA2],
-    lockScooter:          [0x05, 0x00, 0xA1, 0x01, 0x01],
-    unlockScooter:        [0x05, 0x00, 0xA1, 0x01, 0x00],
-    readGPSStatus:        [0x02, 0x00, 0xB3],
-    startDump:            [0x02, 0x00, 0xE1],
-    readOdometer:         [0x02, 0x00, 0xB6],
-    readRideMode:         [0x02, 0x00, 0xB5],
-    readMCUStatus:        [0x02, 0x00, 0xB4],
-    getControllerSN:      [0x02, 0x00, 0xA6],
-    readMotorTemp:        [0x02, 0x00, 0xB2],
-    readVoltage:          [0x02, 0x00, 0xB7],
-    readFirmwareVersion:  [0x02, 0x00, 0xA5],
-    enterOTAMode:         [0x03, 0x00, 0xD1],
-    triggerFlash:         [0x03, 0x00, 0xD5],
-    readBLEMac:           [0x02, 0x00, 0xA9],
-    readVehicleStatus:    [0x02, 0x00, 0xB8],
-    readAllSensors:       [0x02, 0x00, 0xBC],
-    readDiagReport:       [0x02, 0x00, 0xBD],
-    readWheelSpeed:       [0x02, 0x00, 0xC0],
-    readThrottlePosition: [0x02, 0x00, 0xC1],
-    readBrakeStatus:      [0x02, 0x00, 0xC2],
-    readLightingStatus:   [0x02, 0x00, 0xC3],
-    readChargeCycles:     [0x02, 0x00, 0xC4],
-    readBMSHealth:        [0x02, 0x00, 0xC5],
   };
+  reader.readAsText(file);
+}
 
-  for (const [fn, cmd] of Object.entries(Commands)) {
-    window[fn] = async () => {
-      await writeCommand(new Uint8Array(cmd));
-      log(`📨 ${fn} gesendet`);
-    };
+// Main BLE connect function with auto-service detection
+async function connectToScooter() {
+  try {
+    if (!bleSecrets) return log("❗ Keine Secrets geladen.");
+
+    log(`🔎 Suche nach Scooter: ${bleSecrets.bleName}`);
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [] // Don't filter UUIDs
+    });
+
+    if (!device.name.includes("NIU")) {
+      throw new Error("⚠️ Gerät ist kein NIU Scooter.");
+    }
+
+    log("📶 Verbinde...");
+    server = await device.gatt.connect();
+    const services = await server.getPrimaryServices();
+
+    log(`📡 Services gefunden:`);
+    for (const s of services) {
+      log("  • " + s.uuid);
+    }
+
+    service = services.find(s => s.uuid.includes('fee7'));
+    if (!service) throw new Error("❌ Kein 'fee7' Service gefunden.");
+
+    const chars = await service.getCharacteristics();
+    for (const c of chars) {
+      if (c.properties.write) characteristic = c;
+      if (c.properties.notify) notifyChar = c;
+    }
+
+    if (!characteristic || !notifyChar) {
+      throw new Error("❌ Write oder Notify Characteristic fehlt.");
+    }
+
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged", handleNotifications);
+
+    log("✅ BLE Verbindung steht und Benachrichtigungen aktiv.");
+  } catch (err) {
+    log("❌ Verbindung fehlgeschlagen: " + err);
   }
+}
 
-  window.addEventListener("load", async () => {
-    try {
-      await promptSecrets();
-    } catch (e) {
-      log("⚠️ Secrets benötigt, App nicht bereit.");
-    }
-  });
+// Parse notifications
+function handleNotifications(event) {
+  const value = new Uint8Array(event.target.value.buffer);
+  const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+  log("📨 Notification: " + hex);
+}
 
-  window.addEventListener("beforeunload", () => {
-    if (device?.gatt?.connected) {
-      device.gatt.disconnect();
-      log("🔌 Disconnected");
-    }
-  });
+// Write helper
+async function writeCommand(data) {
+  if (!characteristic) return log("❗ Nicht verbunden.");
+  await characteristic.writeValue(data);
+}
+
+// Command: Battery status
+async function readBatteryStatus() {
+  await writeCommand(new Uint8Array([0x02, 0x00, 0xB1]));
+  log("🔋 Battery Status requested.");
+}
 </script>
 </body>
 </html>
