@@ -128,7 +128,7 @@ async function sendAuthSequence() {
 }
 
 async function writeCommand(cmd) {
-  if (!writeChar) return log("❌ Nicht verbunden");
+  if (!writeChar) return log("❌ Nxicht verbunden");
   await writeChar.writeValue(new Uint8Array(cmd));
 }
 
