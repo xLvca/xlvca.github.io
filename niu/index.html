@@ -3,143 +3,112 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>NIU P100 BLE Tool</title>
+  <title>NIU P100 BLE Interface</title>
   <style>
-    body { background:#121212; color:#eee; font-family:sans-serif; padding:1rem; }
-    button { background:#1e1e1e; color:#fff; border:1px solid #444; padding:10px 15px; border-radius:5px; margin:5px; cursor:pointer; }
+    body { background:#121212; color:#e0e0e0; font-family:sans-serif; padding:20px; }
+    button { background:#1f1f1f; border:1px solid #444; color:#fff; padding:10px 20px; border-radius:5px; margin:5px; cursor:pointer }
     button:hover { background:#333; }
-    #log { white-space:pre-wrap; background:#1e1e1e; padding:1rem; border-radius:5px; margin-top:1rem; overflow-x:auto; }
-    textarea { width:100%; height:100px; background:#1e1e1e; color:#0f0; border:1px solid #555; margin-bottom:1rem; padding:1rem; font-family:monospace; }
-    .danger { border:2px solid red; padding:1rem; margin-top:2rem; }
+    textarea, pre { background:#1e1e1e; color:#fff; width:100%; padding:10px; border-radius:5px; margin-top:10px; font-family:monospace; }
   </style>
 </head>
 <body>
+  <h1>NIU P100 BLE Web Interface</h1>
 
-<h1>NIU P100 BLE Web Tool</h1>
+  <label for="bleJson">Paste BLE Secrets JSON:</label>
+  <textarea id="bleJson" rows="5" placeholder='{"bleName":"NIU KQi","blePassword":"...","bleSign":"...","bleAes":"...","bleMac":"..."}'></textarea>
+  <br>
+  <button onclick="loadSecrets()">✅ Load Secrets</button>
+  <button onclick="connectToScooter()">🔌 Connect</button>
+  <button onclick="readBattery()">🔋 Battery</button>
+  <button onclick="startDump()">📦 Start Dump</button>
+  <button onclick="scanAll()">🧪 Scan All Services</button>
 
-<textarea id="secretsInput" placeholder='Paste BLE secrets JSON here...'></textarea>
-<button onclick="loadSecrets()">✅ Load Secrets</button>
-<button onclick="connectToScooter()">🔌 Connect</button>
-<div class="controls">
-  <button onclick="readBatteryStatus()">🔋 Battery</button>
-  <button onclick="readVersionInfo()">📄 Version</button>
-  <button onclick="lockScooter()">🔐 Lock</button>
-  <button onclick="unlockScooter()">🔓 Unlock</button>
-</div>
+  <pre id="log">Log:</pre>
 
-<div class="danger">
-  <h3>⚠️ Risky Zone</h3>
-  <button onclick="startDump()">📦 Dump Firmware</button>
-  <button onclick="enterOTAMode()">🧠 Enter OTA</button>
-  <button onclick="triggerFlash()">⚠️ Flash Trigger</button>
-</div>
+  <script>
+    let device, server, writeChar, notifyChar, secrets = null;
 
-<pre id="log">Log:</pre>
+    const log = msg => {
+      const el = document.getElementById("log");
+      el.textContent += `\n> ${msg}`;
+      el.scrollTop = el.scrollHeight;
+    };
 
-<script>
-let bleSecrets = {};
-let device, server, service, writeChar, notifyChar;
-
-const NIU_SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb';
-const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
-const CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
-
-function log(msg) {
-  const logElem = document.getElementById('log');
-  logElem.textContent += `\n${msg}`;
-  logElem.scrollTop = logElem.scrollHeight;
-}
-
-function loadSecrets() {
-  try {
-    bleSecrets = JSON.parse(document.getElementById("secretsInput").value);
-    log("✅ BLE Secrets geladen");
-  } catch (e) {
-    log("❌ Fehler beim Parsen der Secrets");
-  }
-}
-
-async function connectToScooter() {
-  try {
-    if (!bleSecrets.bleName) return log("❌ BLE Secrets nicht geladen!");
-
-    log(`🔎 Suche nach Scooter: ${bleSecrets.bleName}`);
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: bleSecrets.bleName }],
-      optionalServices: [NIU_SERVICE_UUID]
-    });
-
-    log("📶 Verbinde...");
-    server = await device.gatt.connect();
-
-    // Auto scan if fixed UUID fails
-    try {
-      service = await server.getPrimaryService(NIU_SERVICE_UUID);
-    } catch (err) {
-      log("⚠️ Fallback: Scanne alle Services...");
-      const services = await server.getPrimaryServices();
-      for (const s of services) {
-        const chars = await s.getCharacteristics();
-        for (const c of chars) {
-          if (c.uuid === CHAR_WRITE_UUID) writeChar = c;
-          if (c.uuid === CHAR_NOTIFY_UUID) notifyChar = c;
-        }
-        if (writeChar && notifyChar) {
-          service = s;
-          break;
-        }
+    function loadSecrets() {
+      try {
+        secrets = JSON.parse(document.getElementById("bleJson").value);
+        log("✅ BLE Secrets geladen");
+      } catch (e) {
+        log("❌ Fehler beim Parsen der JSON");
       }
     }
 
-    if (!service) throw new Error("❌ Service nicht gefunden");
-    if (!writeChar) writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
-    if (!notifyChar) notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
+    async function connectToScooter() {
+      if (!secrets) return log("❗ Bitte erst BLE Secrets laden.");
 
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener("characteristicvaluechanged", handleNotification);
-    log("✅ Verbunden & Notification aktiviert");
+      try {
+        log(`🔎 Suche nach Scooter: ${secrets.bleName}`);
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: secrets.bleName }],
+          optionalServices: ['0000fee7-0000-1000-8000-00805f9b34fb']
+        });
 
-    await sendAuthSequence();
-  } catch (e) {
-    log("❌ Verbindung fehlgeschlagen: " + e);
-  }
-}
+        log("📶 Verbinde...");
+        server = await device.gatt.connect();
+        const service = await server.getPrimaryService('0000fee7-0000-1000-8000-00805f9b34fb');
 
-function handleNotification(e) {
-  const value = e.target.value;
-  const hex = [...new Uint8Array(value.buffer)].map(b => b.toString(16).padStart(2, '0')).join(' ');
-  log(`📡 Notification: ${hex}`);
-}
+        writeChar = await service.getCharacteristic('000036f5-0000-1000-8000-00805f9b34fb');
+        notifyChar = await service.getCharacteristic('000036f6-0000-1000-8000-00805f9b34fb');
+        await notifyChar.startNotifications();
 
-async function aesEncrypt(keyText, dataText) {
-  const encoder = new TextEncoder();
-  const key = encoder.encode(keyText.padEnd(16, '\0')).slice(0, 16);
-  const data = encoder.encode(dataText);
-  const cryptoKey = await crypto.subtle.importKey("raw", key, "AES-CBC", false, ["encrypt"]);
-  const iv = new Uint8Array(16);
-  const enc = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, cryptoKey, data);
-  return new Uint8Array(enc);
-}
+        notifyChar.addEventListener("characteristicvaluechanged", handleNotify);
+        log("✅ Verbunden mit NIU Scooter.");
+      } catch (err) {
+        log("❌ Verbindung fehlgeschlagen: " + err);
+      }
+    }
 
-async function sendAuthSequence() {
-  const encrypted = await aesEncrypt(bleSecrets.bleAes, "auth_challenge");
-  await writeChar.writeValue(encrypted);
-  log("🔐 Auth Token gesendet");
-}
+    function handleNotify(event) {
+      const value = new Uint8Array(event.target.value.buffer);
+      const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
+      log("📨 Notification: " + hex);
+    }
 
-async function writeCommand(cmd) {
-  if (!writeChar) return log("❌ Nxicht verbunden");
-  await writeChar.writeValue(new Uint8Array(cmd));
-}
+    async function writeCommand(cmd) {
+      if (!writeChar) return log("❗ Nicht verbunden.");
+      await writeChar.writeValue(cmd);
+    }
 
-const readBatteryStatus = () => writeCommand([0x02, 0x00, 0xB1]);
-const readVersionInfo = () => writeCommand([0x02, 0x00, 0xA4]);
-const lockScooter = () => writeCommand([0x05, 0x00, 0xA1, 0x01, 0x01]);
-const unlockScooter = () => writeCommand([0x05, 0x00, 0xA1, 0x01, 0x00]);
-const startDump = () => writeCommand([0x02, 0x00, 0xE1]);
-const enterOTAMode = () => writeCommand([0x03, 0x00, 0xD1]);
-const triggerFlash = () => writeCommand([0x03, 0x00, 0xD5]);
-</script>
+    async function readBattery() {
+      await writeCommand(new Uint8Array([0x02, 0x00, 0xB1]));
+      log("🔋 Batterieabfrage gesendet");
+    }
 
+    async function startDump() {
+      await writeCommand(new Uint8Array([0x02, 0x00, 0xE1]));
+      log("📦 Dump-Befehl gesendet (nur lesend)");
+    }
+
+    async function scanAll() {
+      try {
+        const dev = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: []
+        });
+        const gatt = await dev.gatt.connect();
+        const services = await gatt.getPrimaryServices();
+        log(`🔍 Gefundene Services (${services.length}):`);
+        for (const s of services) {
+          log("🔧 " + s.uuid);
+          const chars = await s.getCharacteristics();
+          for (const c of chars) {
+            log("   ↳ Char: " + c.uuid);
+          }
+        }
+      } catch (e) {
+        log("❌ Scan Fehler: " + e);
+      }
+    }
+  </script>
 </body>
 </html>
