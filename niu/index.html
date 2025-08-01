@@ -2,107 +2,110 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>NIU P100 BLE Web App</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NIU P100 BLE Web</title>
   <style>
-    body { background: #121212; color: #eee; font-family: monospace; padding: 1rem; }
-    h1 { text-align: center; }
-    button, textarea {
-      background: #1f1f1f; color: #eee; border: 1px solid #555; padding: 8px 14px;
-      margin: 5px; border-radius: 4px; cursor: pointer;
+    body {
+      background: #121212;
+      color: #e0e0e0;
+      font-family: sans-serif;
+      padding: 1rem;
     }
-    button:hover { background: #333; }
-    #log { background: #1e1e1e; padding: 1rem; white-space: pre-wrap; max-height: 300px; overflow-y: scroll; border-radius: 5px; }
-    textarea { width: 100%; height: 120px; resize: none; font-family: monospace; }
+    textarea, button {
+      width: 100%;
+      background: #1e1e1e;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 5px;
+      padding: 10px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #333;
+    }
+    #log {
+      white-space: pre-wrap;
+      background: #1e1e1e;
+      padding: 1rem;
+      border-radius: 5px;
+      margin-top: 1rem;
+      max-height: 50vh;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
-  <h1>NIU P100 BLE WebApp</h1>
+  <h1>🔧 NIU BLE Web Interface</h1>
 
-  <textarea id="secretsInput" placeholder='Paste BLE Secrets JSON here...'></textarea><br/>
-  <button onclick="loadSecrets()">🔑 Load Secrets</button>
-  <button onclick="connectToScooter()">🔌 Connect</button>
-  <button onclick="readBatteryStatus()">🔋 Battery</button>
+  <label for="secrets">🔑 BLE Secrets JSON:</label>
+  <textarea id="secrets" rows="3" placeholder='{"bleName":"NIU KQi",...}'></textarea>
+  <button onclick="loadSecrets()">✅ Load Secrets</button>
+  <button onclick="connect()">🔌 Connect to Scooter</button>
 
-  <pre id="log">Log:</pre>
+  <div id="log">Log:</div>
 
-<script>
-let bleSecrets = null;
-let device, server, service, characteristic, notifyChar;
+  <script>
+    let bleSecrets = {}, device, server, service, writeChar, notifyChar;
 
-function log(msg) {
-  const el = document.getElementById('log');
-  el.textContent += "\n" + msg;
-  el.scrollTop = el.scrollHeight;
-}
+    const SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb';
+    const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
+    const CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
 
-function loadSecrets() {
-  const text = document.getElementById('secretsInput').value;
-  try {
-    bleSecrets = JSON.parse(text);
-    log("✅ BLE Secrets geladen:");
-    log(JSON.stringify(bleSecrets, null, 2));
-  } catch (e) {
-    log("❌ JSON Fehler: " + e.message);
-  }
-}
-
-async function connectToScooter() {
-  try {
-    if (!bleSecrets) return log("❗ Keine Secrets geladen.");
-
-    log(`🔎 Suche nach Scooter: ${bleSecrets.bleName || "NIU"}`);
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: []
-    });
-
-    if (!device.name.includes("NIU")) {
-      throw new Error("⚠️ Gerät ist kein NIU Scooter.");
+    function log(msg) {
+      const logEl = document.getElementById('log');
+      logEl.textContent += `\n${msg}`;
+      logEl.scrollTop = logEl.scrollHeight;
     }
 
-    log("📶 Verbinde...");
-    server = await device.gatt.connect();
-    const services = await server.getPrimaryServices();
-
-    log(`📡 Services gefunden:`);
-    for (const s of services) log("  • " + s.uuid);
-
-    service = services.find(s => s.uuid.includes('fee7'));
-    if (!service) throw new Error("❌ Kein 'fee7' Service gefunden.");
-
-    const chars = await service.getCharacteristics();
-    for (const c of chars) {
-      if (c.properties.write) characteristic = c;
-      if (c.properties.notify) notifyChar = c;
+    function loadSecrets() {
+      try {
+        const raw = document.getElementById('secrets').value;
+        bleSecrets = JSON.parse(raw);
+        if (!bleSecrets.bleName || !bleSecrets.blePassword || !bleSecrets.bleSign || !bleSecrets.bleAes || !bleSecrets.bleMac) {
+          throw new Error("Missing fields.");
+        }
+        log("✅ BLE Secrets geladen");
+      } catch (e) {
+        log("❌ Fehler beim Laden der Secrets: " + e.message);
+      }
     }
 
-    if (!characteristic || !notifyChar) throw new Error("❌ Write oder Notify fehlt.");
+    async function connect() {
+      if (!bleSecrets.bleName) return log("❌ Keine Secrets geladen.");
+      try {
+        log("🔎 Suche nach Scooter: " + bleSecrets.bleName);
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: bleSecrets.bleName }],
+          optionalServices: [
+            SERVICE_UUID,
+            CHAR_WRITE_UUID,
+            CHAR_NOTIFY_UUID,
+            '0000180f-0000-1000-8000-00805f9b34fb', // Battery
+            '0000180a-0000-1000-8000-00805f9b34fb'  // Device Info
+          ]
+        });
 
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener("characteristicvaluechanged", handleNotifications);
+        log("📶 Verbinde...");
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+        writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+        notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
 
-    log("✅ BLE Verbindung steht und Notifications aktiv.");
-  } catch (err) {
-    log("❌ Verbindung fehlgeschlagen: " + err);
-  }
-}
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', handleNotify);
+        log("✅ Verbunden & lausche auf Benachrichtigungen.");
+      } catch (e) {
+        log("❌ Verbindung fehlgeschlagen: " + e.message);
+      }
+    }
 
-function handleNotifications(event) {
-  const value = new Uint8Array(event.target.value.buffer);
-  const hex = [...value].map(b => b.toString(16).padStart(2, '0')).join(' ');
-  log("📨 Notification: " + hex);
-}
-
-async function writeCommand(data) {
-  if (!characteristic) return log("❗ Nicht verbunden.");
-  await characteristic.writeValue(data);
-}
-
-async function readBatteryStatus() {
-  await writeCommand(new Uint8Array([0x02, 0x00, 0xB1]));
-  log("🔋 Battery Status requested.");
-}
-</script>
+    function handleNotify(event) {
+      const value = event.target.value;
+      const hex = Array.from(new Uint8Array(value.buffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      log("📨 Notification: " + hex);
+    }
+  </script>
 </body>
 </html>
