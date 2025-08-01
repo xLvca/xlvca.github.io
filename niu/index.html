@@ -1,2 +1,234 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>NIU P100 BLE Interface</title><style>body{background:#121212;color:#e0e0e0;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:start;height:100vh;padding:1rem}button{background:#1f1f1f;border:1px solid #444;color:#fff;padding:10px 20px;border-radius:5px;margin:5px;cursor:pointer}button:hover{background:#333}pre{background:#1e1e1e;padding:1rem;border-radius:5px;max-width:90vw;overflow-x:auto}.controls{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}</style></head><body><h1>NIU P100 Scooter BLE Interface</h1><div class="controls"><button onclick="connectToScooter()">🔌 Connect</button><button onclick="sendAuthSequence()">🔐 Authenticate</button><button onclick="readBatteryStatus()">🔋 Battery</button><button onclick="readVersionInfo()">🧬 Version</button><button onclick="readLockStatus()">🔒 Lock Status</button><button onclick="lockScooter()">🔐 Lock</button><button onclick="unlockScooter()">🔓 Unlock</button><button onclick="readGPSStatus()">🧭 GPS</button><button onclick="startDump()">📦 Dump</button><button onclick="readOdometer()">🛞 Odometer</button><button onclick="readRideMode()">⚙️ Ride Mode</button><button onclick="readMCUStatus()">🧪 MCU</button><button onclick="getControllerSN()">🔢 SN</button><button onclick="readMotorTemp()">🌡️ Motor Temp</button><button onclick="readVoltage()">🔌 Voltage</button><button onclick="readFirmwareVersion()">📄 FW Ver</button><button onclick="enterOTAMode()">🧠 Enter OTA</button><button onclick="triggerFlash()">⚠️ Flash</button><button onclick="readBLEMac()">📡 BLE MAC</button><button onclick="readVehicleStatus()">🚦 Vehicle</button><button onclick="readAllSensors()">📊 All Sensors</button><button onclick="readDiagReport()">🧾 Diagnostics</button><button onclick="readWheelSpeed()">🌀 Wheel Speed</button><button onclick="readThrottlePosition()">🎚️ Throttle</button><button onclick="readBrakeStatus()">🛑 Brake</button><button onclick="readLightingStatus()">💡 Lights</button><button onclick="readChargeCycles()">🔄 Charge Cycles</button><button onclick="readBMSHealth()">🩺 BMS</button></div><pre id="log">Log:
-</pre><script>let device,server,service,characteristic,notifyChar;const SERVICE_UUID='0000fee7-0000-1000-8000-00805f9b34fb',CHAR_WRITE_UUID='000036f5-0000-1000-8000-00805f9b34fb',CHAR_NOTIFY_UUID='000036f6-0000-1000-8000-00805f9b34fb';function log(m){const e=document.getElementById('log');e.textContent+=`\n> ${m}`;e.scrollTop=e.scrollHeight}async function connectToScooter(){try{log('Requesting Bluetooth device...');device=await navigator.bluetooth.requestDevice({filters:[{namePrefix:'NIU'}],optionalServices:[SERVICE_UUID]});log('Connecting...');server=await device.gatt.connect();service=await server.getPrimaryService(SERVICE_UUID);characteristic=await service.getCharacteristic(CHAR_WRITE_UUID);notifyChar=await service.getCharacteristic(CHAR_NOTIFY_UUID);await notifyChar.startNotifications();notifyChar.addEventListener('characteristicvaluechanged',handleNotifications);log('Connected and listening for notifications.')}catch(e){log('Error: '+e)}}function handleNotifications(e){const v=e.target.value,h=Array.from(new Uint8Array(v.buffer)).map(b=>b.toString(16).padStart(2,'0')).join(' ');log(`Notification: ${h}`)}async function aesEncrypt(k,d){const key=await crypto.subtle.importKey('raw',k,{name:'AES-CBC'},!1,['encrypt']),iv=new Uint8Array(16),enc=await crypto.subtle.encrypt({name:'AES-CBC',iv:iv},key,d);return new Uint8Array(enc)}async function sendAuthSequence(){if(!characteristic)return log('Not connected.');const k=new Uint8Array([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0x41,0x42,0x43,0x44,0x45,0x46]),d=new TextEncoder().encode('auth_challenge'),e=await aesEncrypt(k,d);await characteristic.writeValue(e);log('Encrypted auth token sent.')}async function writeCommand(c){if(!characteristic)return log('Not connected.');await characteristic.writeValue(c)}async function readBatteryStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xB1]));log('Battery status requested.')}async function readVersionInfo(){await writeCommand(new Uint8Array([0x02,0x00,0xA4]));log('Version info requested.')}async function readLockStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xA2]));log('Lock status requested.')}async function lockScooter(){await writeCommand(new Uint8Array([0x05,0x00,0xA1,0x01,0x01]));log('Lock command sent.')}async function unlockScooter(){await writeCommand(new Uint8Array([0x05,0x00,0xA1,0x01,0x00]));log('Unlock command sent.')}async function readGPSStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xB3]));log('GPS status requested.')}async function readOdometer(){await writeCommand(new Uint8Array([0x02,0x00,0xB6]));log('Odometer requested.')}async function readRideMode(){await writeCommand(new Uint8Array([0x02,0x00,0xB5]));log('Ride mode requested.')}async function startDump(){await writeCommand(new Uint8Array([0x02,0x00,0xE1]));log('Firmware dump triggered.')}async function readMCUStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xB4]));log('MCU status requested.')}async function getControllerSN(){await writeCommand(new Uint8Array([0x02,0x00,0xA6]));log('Controller Serial requested.')}async function readMotorTemp(){await writeCommand(new Uint8Array([0x02,0x00,0xB2]));log('Motor temperature requested.')}async function readVoltage(){await writeCommand(new Uint8Array([0x02,0x00,0xB7]));log('Voltage requested.')}async function readFirmwareVersion(){await writeCommand(new Uint8Array([0x02,0x00,0xA5]));log('Firmware version requested.')}async function enterOTAMode(){await writeCommand(new Uint8Array([0x03,0x00,0xD1]));log('OTA mode command sent.')}async function triggerFlash(){await writeCommand(new Uint8Array([0x03,0x00,0xD5]));log('Flash trigger sent (dangerous).')}async function readBLEMac(){await writeCommand(new Uint8Array([0x02,0x00,0xA9]));log('BLE MAC requested.')}async function readVehicleStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xB8]));log('Vehicle status requested.')}async function readAllSensors(){await writeCommand(new Uint8Array([0x02,0x00,0xBC]));log('All sensors requested.')}async function readDiagReport(){await writeCommand(new Uint8Array([0x02,0x00,0xBD]));log('Diagnostics report requested.')}async function readWheelSpeed(){await writeCommand(new Uint8Array([0x02,0x00,0xC0]));log('Wheel speed requested.')}async function readThrottlePosition(){await writeCommand(new Uint8Array([0x02,0x00,0xC1]));log('Throttle position requested.')}async function readBrakeStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xC2]));log('Brake status requested.')}async function readLightingStatus(){await writeCommand(new Uint8Array([0x02,0x00,0xC3]));log('Lighting status requested.')}async function readChargeCycles(){await writeCommand(new Uint8Array([0x02,0x00,0xC4]));log('Charge cycles requested.')}async function readBMSHealth(){await writeCommand(new Uint8Array([0x02,0x00,0xC5]));log('BMS health requested.')}window.addEventListener('beforeunload',()=>{if(device?.gatt?.connected){device.gatt.disconnect();log('Disconnected from device.')}});</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIU P100 BLE Interface</title>
+  <style>
+    body {
+      background: #121212;
+      color: #e0e0e0;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: start;
+      height: 100vh;
+      padding: 1rem;
+    }
+    button {
+      background: #1f1f1f;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 5px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #333;
+    }
+    pre {
+      background: #1e1e1e;
+      padding: 1rem;
+      border-radius: 5px;
+      max-width: 90vw;
+      overflow-x: auto;
+      max-height: 30vh;
+      overflow-y: auto;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>NIU P100 Scooter BLE Interface</h1>
+  <div class="controls">
+    <button onclick="connectToScooter()">🔌 Connect</button>
+    <button onclick="scanAllServices()">🔍 Scan Services</button>
+    <button onclick="fullDebugBLE()">🧩 Full BLE Debug</button>
+    <button onclick="sendAuthSequence()">🔐 Authenticate</button>
+    <button onclick="readBatteryStatus()">🔋 Battery</button>
+    <button onclick="readVersionInfo()">🧬 Version</button>
+    <button onclick="readLockStatus()">🔒 Lock Status</button>
+    <button onclick="lockScooter()">🔐 Lock</button>
+    <button onclick="unlockScooter()">🔓 Unlock</button>
+    <button onclick="readGPSStatus()">🧭 GPS</button>
+    <button onclick="startDump()">📦 Dump</button>
+    <button onclick="readOdometer()">🛞 Odometer</button>
+    <button onclick="readRideMode()">⚙️ Ride Mode</button>
+    <button onclick="readMCUStatus()">🧪 MCU</button>
+    <button onclick="getControllerSN()">🔢 SN</button>
+    <button onclick="readMotorTemp()">🌡️ Motor Temp</button>
+    <button onclick="readVoltage()">🔌 Voltage</button>
+    <button onclick="readFirmwareVersion()">📄 FW Ver</button>
+    <button onclick="enterOTAMode()">🧠 Enter OTA</button>
+    <button onclick="triggerFlash()">⚠️ Flash</button>
+    <button onclick="readBLEMac()">📡 BLE MAC</button>
+    <button onclick="readVehicleStatus()">🚦 Vehicle</button>
+    <button onclick="readAllSensors()">📊 All Sensors</button>
+    <button onclick="readDiagReport()">🧾 Diagnostics</button>
+    <button onclick="readWheelSpeed()">🌀 Wheel Speed</button>
+    <button onclick="readThrottlePosition()">🎚️ Throttle</button>
+    <button onclick="readBrakeStatus()">🛑 Brake</button>
+    <button onclick="readLightingStatus()">💡 Lights</button>
+    <button onclick="readChargeCycles()">🔄 Charge Cycles</button>
+    <button onclick="readBMSHealth()">🩺 BMS</button>
+  </div>
+  <pre id="log">Log:</pre>
+  <script>
+    let device, server, service, characteristic, notifyChar;
+    const SERVICE_UUID = '0000fee7-0000-1000-8000-00805f9b34fb';
+    const CHAR_WRITE_UUID = '000036f5-0000-1000-8000-00805f9b34fb';
+    const CHAR_NOTIFY_UUID = '000036f6-0000-1000-8000-00805f9b34fb';
+
+    function log(m) {
+      const e = document.getElementById('log');
+      e.textContent += `\n> ${m}`;
+      e.scrollTop = e.scrollHeight;
+    }
+
+    async function connectToScooter() {
+      try {
+        log('Requesting Bluetooth device...');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'NIU' }],
+          optionalServices: [SERVICE_UUID]
+        });
+        log('Connecting...');
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+        characteristic = await service.getCharacteristic(CHAR_WRITE_UUID);
+        notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', handleNotifications);
+        log('Connected and listening for notifications.');
+      } catch (e) {
+        log('Error: ' + e);
+      }
+    }
+
+    async function scanAllServices() {
+      try {
+        log('Requesting device (no filters)...');
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: []
+        });
+        log('Connecting...');
+        server = await device.gatt.connect();
+        const services = await server.getPrimaryServices();
+        log(`Found ${services.length} services:`);
+        for (const s of services) {
+          log(`- ${s.uuid}`);
+          const chars = await s.getCharacteristics();
+          for (const c of chars) {
+            log(`  ↳ Characteristic: ${c.uuid}`);
+          }
+        }
+      } catch (e) {
+        log('Scan error: ' + e);
+      }
+    }
+
+    async function fullDebugBLE() {
+      try {
+        log('🔎 Starting full BLE debug scan...');
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: []
+        });
+        log(`🟢 Selected: ${device.name || '(unnamed device)'}`);
+        server = await device.gatt.connect();
+        const services = await server.getPrimaryServices();
+
+        log(`📡 Found ${services.length} services:\n`);
+        for (const s of services) {
+          log(`📘 Service: ${s.uuid}`);
+          try {
+            const characteristics = await s.getCharacteristics();
+            for (const c of characteristics) {
+              let props = Object.entries(c.properties)
+                .filter(([_, v]) => v)
+                .map(([k]) => k).join(', ');
+              log(`  🔹 Characteristic: ${c.uuid} [${props}]`);
+            }
+          } catch (e) {
+            log(`  ⚠️ Error reading characteristics: ${e}`);
+          }
+        }
+
+        log(`✅ BLE scan done. Use real UUIDs above to connect.`);
+
+      } catch (e) {
+        log(`❌ Debug BLE Error: ${e}`);
+      }
+    }
+
+    function handleNotifications(e) {
+      const v = e.target.value;
+      const h = Array.from(new Uint8Array(v.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+      log(`Notification: ${h}`);
+    }
+
+    async function aesEncrypt(k, d) {
+      const key = await crypto.subtle.importKey('raw', k, { name: 'AES-CBC' }, false, ['encrypt']);
+      const iv = new Uint8Array(16);
+      const enc = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: iv }, key, d);
+      return new Uint8Array(enc);
+    }
+
+    async function sendAuthSequence() {
+      if (!characteristic) return log('Not connected.');
+      const k = new Uint8Array([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0x41,0x42,0x43,0x44,0x45,0x46]);
+      const d = new TextEncoder().encode('auth_challenge');
+      const e = await aesEncrypt(k, d);
+      await characteristic.writeValue(e);
+      log('Encrypted auth token sent.');
+    }
+
+    async function writeCommand(c) {
+      if (!characteristic) return log('Not connected.');
+      await characteristic.writeValue(c);
+    }
+
+    async function readBatteryStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xB1])); log('Battery status requested.'); }
+    async function readVersionInfo() { await writeCommand(new Uint8Array([0x02,0x00,0xA4])); log('Version info requested.'); }
+    async function readLockStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xA2])); log('Lock status requested.'); }
+    async function lockScooter() { await writeCommand(new Uint8Array([0x05,0x00,0xA1,0x01,0x01])); log('Lock command sent.'); }
+    async function unlockScooter() { await writeCommand(new Uint8Array([0x05,0x00,0xA1,0x01,0x00])); log('Unlock command sent.'); }
+    async function readGPSStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xB3])); log('GPS status requested.'); }
+    async function readOdometer() { await writeCommand(new Uint8Array([0x02,0x00,0xB6])); log('Odometer requested.'); }
+    async function readRideMode() { await writeCommand(new Uint8Array([0x02,0x00,0xB5])); log('Ride mode requested.'); }
+    async function startDump() { await writeCommand(new Uint8Array([0x02,0x00,0xE1])); log('Firmware dump triggered.'); }
+    async function readMCUStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xB4])); log('MCU status requested.'); }
+    async function getControllerSN() { await writeCommand(new Uint8Array([0x02,0x00,0xA6])); log('Controller Serial requested.'); }
+    async function readMotorTemp() { await writeCommand(new Uint8Array([0x02,0x00,0xB2])); log('Motor temperature requested.'); }
+    async function readVoltage() { await writeCommand(new Uint8Array([0x02,0x00,0xB7])); log('Voltage requested.'); }
+    async function readFirmwareVersion() { await writeCommand(new Uint8Array([0x02,0x00,0xA5])); log('Firmware version requested.'); }
+    async function enterOTAMode() { await writeCommand(new Uint8Array([0x03,0x00,0xD1])); log('OTA mode command sent.'); }
+    async function triggerFlash() { await writeCommand(new Uint8Array([0x03,0x00,0xD5])); log('Flash trigger sent (dangerous).'); }
+    async function readBLEMac() { await writeCommand(new Uint8Array([0x02,0x00,0xA9])); log('BLE MAC requested.'); }
+    async function readVehicleStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xB8])); log('Vehicle status requested.'); }
+    async function readAllSensors() { await writeCommand(new Uint8Array([0x02,0x00,0xBC])); log('All sensors requested.'); }
+    async function readDiagReport() { await writeCommand(new Uint8Array([0x02,0x00,0xBD])); log('Diagnostics report requested.'); }
+    async function readWheelSpeed() { await writeCommand(new Uint8Array([0x02,0x00,0xC0])); log('Wheel speed requested.'); }
+    async function readThrottlePosition() { await writeCommand(new Uint8Array([0x02,0x00,0xC1])); log('Throttle position requested.'); }
+    async function readBrakeStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xC2])); log('Brake status requested.'); }
+    async function readLightingStatus() { await writeCommand(new Uint8Array([0x02,0x00,0xC3])); log('Lighting status requested.'); }
+    async function readChargeCycles() { await writeCommand(new Uint8Array([0x02,0x00,0xC4])); log('Charge cycles requested.'); }
+    async function readBMSHealth() { await writeCommand(new Uint8Array([0x02,0x00,0xC5])); log('BMS health requested.'); }
+
+    window.addEventListener('beforeunload', () => {
+      if (device?.gatt?.connected) {
+        device.gatt.disconnect();
+        log('Disconnected from device.');
+      }
+    });
+  </script>
+</body>
+</html>
