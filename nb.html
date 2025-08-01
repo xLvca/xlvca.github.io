@@ -65,6 +65,11 @@
     <button onclick="changeRegion()">Change</button>
   </div>
 
+  <div class="section">
+    <button onclick="readSerial()">🔎 Read Serial</button>
+    <button onclick="toggleESC()">🧩 Toggle ESC Mode</button>
+  </div>
+
   <div id="output">Status: Not connected.</div>
 
   <script>
@@ -165,6 +170,20 @@
       const shutdownCmd = Uint8Array.from([0xF0, 0x01, 0x26, 0x02]);
       await writeChar.writeValue(shutdownCmd);
       output("Sent shutdown command");
+    }
+
+    async function readSerial() {
+      if (!writeChar) return output("Not connected");
+      const serialCmd = Uint8Array.from([0xF0, 0x01, 0x1A, 0x00]);
+      await writeChar.writeValue(serialCmd);
+      output("Requested serial number");
+    }
+
+    async function toggleESC() {
+      if (!writeChar) return output("Not connected");
+      const escCmd = Uint8Array.from([0xF0, 0x02, 0x22, 0x01, 0x00]);
+      await writeChar.writeValue(escCmd);
+      output("Toggled ESC mode");
     }
   </script>
 </body>
