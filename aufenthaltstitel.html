@@ -40,7 +40,7 @@
     height: 100%;
     object-fit: cover;
   }
-  /* Scan-Rahmen Overlay */
+  /* Scan-Rahmen Overlay - minimal weiß, kein pulsieren */
   #frame {
     pointer-events: none;
     position: absolute;
@@ -51,27 +51,10 @@
     max-width: 340px;
     max-height: 200px;
     transform: translate(-50%, -50%);
-    border: 3px solid rgba(255,255,255,0.8);
+    border: 2px solid rgba(255,255,255,0.85);
     border-radius: 12px;
-    box-shadow:
-      0 0 12px 2px rgba(52,152,219,0.7),
-      inset 0 0 20px 2px rgba(255,255,255,0.6);
-    animation: pulse 2.5s ease-in-out infinite;
+    box-shadow: inset 0 0 12px 1px rgba(255,255,255,0.3);
     backdrop-filter: brightness(0.85);
-  }
-  @keyframes pulse {
-    0%, 100% {
-      border-color: rgba(52,152,219,0.8);
-      box-shadow:
-        0 0 12px 2px rgba(52,152,219,0.7),
-        inset 0 0 20px 2px rgba(255,255,255,0.6);
-    }
-    50% {
-      border-color: rgba(52,152,219,0.4);
-      box-shadow:
-        0 0 8px 1px rgba(52,152,219,0.3),
-        inset 0 0 12px 1px rgba(255,255,255,0.3);
-    }
   }
   #controls {
     margin-top: 1rem;
@@ -107,6 +90,30 @@
     box-shadow: 0 4px 12px rgba(230,126,34,0.8);
     font-weight: 700;
   }
+  #flashBtn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(255 255 255 / 0.3);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+    font-size: 24px;
+    box-shadow: 0 0 12px rgba(255,255,255,0.7);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s ease;
+    z-index: 10;
+  }
+  #flashBtn.active {
+    background: #f1c40f;
+    color: #2c3e50;
+    box-shadow: 0 0 20px #f1c40f;
+  }
   #status {
     margin-top: 1rem;
     font-size: 1rem;
@@ -137,6 +144,7 @@
 <div id="video-container">
   <video id="video" autoplay playsinline></video>
   <div id="frame"></div>
+  <div id="flashBtn" title="Blitz Ein/Aus" aria-pressed="false" role="button" tabindex="0">⚡</div>
 </div>
 
 <div id="controls" role="radiogroup" aria-label="Dokumentseite wählen">
@@ -163,8 +171,11 @@
   const frontBtn = document.getElementById('frontBtn');
   const backBtn = document.getElementById('backBtn');
   const scanBtn = document.getElementById('scanBtn');
+  const flashBtn = document.getElementById('flashBtn');
 
   let currentSide = 'front';
+  let streamTrack = null;
+  let torchOn = false;
 
   function setSide(side) {
     currentSide = side;
@@ -193,6 +204,7 @@
         audio: false
       });
       video.srcObject = stream;
+      streamTrack = stream.getVideoTracks()[0];
       return new Promise(resolve => {
         video.onloadedmetadata = () => resolve();
       });
@@ -201,49 +213,145 @@
     }
   }
 
-  // Hilfsfunktion: Versuche Datum im Format "XX XX XXXX" in ISO yyyy-mm-dd zu parsen
-  function parseDate(d1, d2, d3) {
-    // d1, d2, d3 können je nach Format Tag, Monat, Jahr sein - Wir nehmen an Tag Monat Jahr
-    if (!d1 || !d2 || !d3) return null;
-    if (d3.length !== 4) return null;
-    // Sicherstellen, dass Zahlen vorliegen
-    if (isNaN(d1) || isNaN(d2) || isNaN(d3)) return null;
-    // Pad Tag und Monat
-    let day = d1.padStart(2,'0');
-    let month = d2.padStart(2,'0');
-    let year = d3;
-    // Validieren Tag/Monat Grundlegend
-    if (parseInt(day) < 1 || parseInt(day) > 31) return null;
-    if (parseInt(month) < 1 || parseInt(month) > 12) return null;
-    return `${year}-${month}-${day}`;
+  // Torch/Blitz Umschalten (nur wenn unterstützt)
+  async function toggleFlash() {
+    if (!streamTrack) return;
+    const capabilities = streamTrack.getCapabilities();
+    if (!capabilities.torch) {
+      alert('Blitz wird von dieser Kamera nicht unterstützt.');
+      return;
+    }
+    try {
+      torchOn = !torchOn;
+      await streamTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+      flashBtn.classList.toggle('active', torchOn);
+      flashBtn.setAttribute('aria-pressed', torchOn.toString());
+    } catch (err) {
+      alert('Fehler beim Umschalten des Blitzes: ' + err.message);
+    }
   }
 
-  // Parsing Aufenthaltstitel vorderseite mit optimiertem Muster
+  flashBtn.onclick = toggleFlash;
+  flashBtn.onkeydown = e => { if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFlash(); } };
+
+  // Bildvorverarbeitung: Beschneide auf Rahmen, erhöhe Kontrast + Schärfe (leicht)
+  function preprocessImage() {
+    // Rahmen relativ zum Video
+    const frame = document.getElementById('frame');
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    // Berechne crop Bereich relativ zu Video Größe
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    const cropX = (frameRect.left - videoRect.left) * scaleX;
+    const cropY = (frameRect.top - videoRect.top) * scaleY;
+    const cropW = frameRect.width * scaleX;
+    const cropH = frameRect.height * scaleY;
+
+    // Setze Canvas Größe auf crop Größe
+    canvas.width = cropW;
+    canvas.height = cropH;
+
+    // Zeichne ausgeschnittenes Bild auf Canvas
+    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    // Hol Bilddaten, erhöhe Kontrast + Schärfe leicht (Kernel)
+    let imageData = ctx.getImageData(0, 0, cropW, cropH);
+    let data = imageData.data;
+
+    // Kontrast erhöhen
+    const contrast = 1.4; // 1=neutral, >1 kontrast erhöhen
+    const intercept = 128 * (1 - contrast);
+
+    for (let i = 0; i < data.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        data[i + c] = Math.min(255, Math.max(0, contrast * data[i + c] + intercept));
+      }
+    }
+
+    // Einfacher Schärfe-Filter (unsharp mask - rudimentär)
+    // Convolution Kernel (3x3) für leichte Schärfe
+    const kernel = [
+      0, -1, 0,
+      -1, 5, -1,
+      0, -1, 0
+    ];
+    const w = cropW;
+    const h = cropH;
+    const copy = new Uint8ClampedArray(data);
+
+    for (let y = 1; y < h -1; y++) {
+      for (let x = 1; x < w -1; x++) {
+        for (let c = 0; c < 3; c++) {
+          let sum = 0;
+          let idx = (y*w + x)*4 + c;
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <=1; kx++) {
+              let kidx = (ky+1)*3 + (kx+1);
+              let pxidx = ((y+ky)*w + (x+kx))*4 + c;
+              sum += copy[pxidx] * kernel[kidx];
+            }
+          }
+          data[idx] = Math.min(255, Math.max(0, sum));
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  // Parsing Funktionen (wie vorher, leicht erweitert & angepasst)
+  function parseDate(day, month, year) {
+    // Prüfe Plausibilität und formatiere yyyy-mm-dd
+    day = parseInt(day,10);
+    month = parseInt(month,10);
+    year = parseInt(year,10);
+    if (year < 1900 || year > 2100) return null;
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+    // Einfache Prüfung: keine 31.02 etc. hier
+    return `${year.toString().padStart(4,'0')}-${month.toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`;
+  }
+
   function parseFront(text) {
     const data = {};
     text = text.toUpperCase();
 
-    // Suche nach GEBURTSDATUM oder DATE OF BIRTH + Datum (XX XX XXXX)
+    // GEBURTSDATUM oder DATE OF BIRTH (Datum direkt dahinter oder in der nächsten Zeile)
     let dobMatch = text.match(/(GEBURTSDATUM|DATE OF BIRTH)[\s:\-]*([0-3]?\d)[\s.\-\/]([01]?\d)[\s.\-\/](\d{4})/);
+    if (!dobMatch) {
+      // Falls Datum in nächster Zeile: Splitt nach Zeilen und suche nach DOB, dann in nächster Zeile Datum
+      let lines = text.split('\n');
+      for(let i=0; i<lines.length; i++) {
+        if (lines[i].includes('GEBURTSDATUM') || lines[i].includes('DATE OF BIRTH')) {
+          let possibleDate = lines[i+1] || '';
+          let dateMatch = possibleDate.match(/([0-3]?\d)[\s.\-\/]([01]?\d)[\s.\-\/](\d{4})/);
+          if (dateMatch) {
+            dobMatch = [null,null,dateMatch[1], dateMatch[2], dateMatch[3]];
+            break;
+          }
+        }
+      }
+    }
     if (dobMatch) {
       let isoDate = parseDate(dobMatch[2], dobMatch[3], dobMatch[4]);
       if (isoDate) data.DOB = isoDate;
     }
 
-    // Dokumentnummer oben rechts (meist ein 9-stelliger alphanumerischer String)
-    // Wir versuchen Zeilen zu finden, die 8-12 Zeichen haben, und evtl. mit "Dokumentnummer", "Nr" oder ähnliches markieren.
-    let docNrMatch = text.match(/(DOKUMENTNUMMER|DOCUMENT NUMBER|DOC NR|NR)[\s:\-]*([A-Z0-9]{6,12})/);
+    // Dokumentnummer oben rechts: Suche nach typischen Labels + 8-12 Alphanumerisch
+    let docNrMatch = text.match(/(DOKUMENTNUMMER|DOCUMENT NUMBER|DOC NR|NR)[\s:\-]*([A-Z0-9]{8,12})/);
     if (docNrMatch) {
       data.DocumentNumber = docNrMatch[2];
     } else {
-      // Fallback: Suche nach 9-12 alphanumerischen Zeichen am Ende einer Zeile (Oberer rechter Bereich evtl)
-      let altDocNr = text.match(/(?:\n|^)([A-Z0-9]{9,12})(?:\n|$)/);
-      if (altDocNr) {
-        data.DocumentNumber = altDocNr[1];
-      }
+      // Fallback Suche nach 8-12 Alphanumerisch in der Nähe oben rechts (erste Zeilen)
+      let firstLines = text.split('\n').slice(0,8).join('\n');
+      let altDocNr = firstLines.match(/[A-Z0-9]{8,12}/);
+      if (altDocNr) data.DocumentNumber = altDocNr[0];
     }
 
-    // Seriennummer unten rechts (kleiner Text, meist 6-8-stellig)
+    // Seriennummer unten rechts: 5-10 alphanumerisch, Label SN, SERIAL, SERIENNUMMER, NR
     let serNrMatch = text.match(/(SERIAL|SERIENNUMMER|SN|NR)[\s:\-]*([A-Z0-9]{5,10})/);
     if (serNrMatch) {
       data.SerialNumber = serNrMatch[2];
@@ -252,22 +360,17 @@
     return data;
   }
 
-  // Parsing Rückseite mit MRZ und Adresse
   function parseBack(text) {
     const data = {};
     text = text.toUpperCase();
 
-    // MRZ-Zeilen mit vielen < Zeichen (mind. 2 pro Zeile)
+    // MRZ mit mind. 2 < Zeichen pro Zeile erkennen
     let mrzLines = text.split('\n').filter(line => (line.match(/</g) || []).length >= 2);
-    if (mrzLines.length > 0) {
-      data.MRZ = mrzLines.join('\n');
-    }
+    if (mrzLines.length > 0) data.MRZ = mrzLines.join('\n');
 
-    // Adresse: 5-stellige PLZ + Ort (z.B. 12345 BERLIN)
+    // Adresse: 5-stellige PLZ + Ort
     let addrMatch = text.match(/(\d{5})\s+([A-ZÄÖÜß\s\-]+)/);
-    if (addrMatch) {
-      data.Address = addrMatch[0].trim();
-    }
+    if (addrMatch) data.Address = addrMatch[0].trim();
 
     // Ausstellungsdatum (optional)
     let issueMatch = text.match(/(AUSSTELLUNGSDATUM|ISSUE DATE)[\s:\-]*([0-3]?\d)[\s.\-\/]([01]?\d)[\s.\-\/](\d{4})/);
@@ -297,35 +400,48 @@
     return out.trim();
   }
 
+  // OCR Retry & Scan Optimierung
   async function doOCR() {
     statusDiv.textContent = 'Bild wird aufgenommen... Bitte still halten!';
     resultDiv.textContent = '';
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    preprocessImage();
 
-    try {
-      const { data: { text } } = await Tesseract.recognize(canvas, 'deu', {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}% - Bitte still halten!`;
+    let lastResult = '';
+    let tries = 0;
+    const maxTries = 3;
+
+    while(tries < maxTries) {
+      try {
+        const { data: { text } } = await Tesseract.recognize(canvas, 'deu', {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}% - Bitte still halten! (${tries+1}/${maxTries})`;
+            }
           }
+        });
+
+        let parsedData;
+        if (currentSide === 'front') parsedData = parseFront(text);
+        else parsedData = parseBack(text);
+
+        const output = formatOutput(parsedData, currentSide);
+
+        if (output !== lastResult && output.indexOf('Keine relevanten Daten erkannt') === -1) {
+          statusDiv.textContent = 'Scan abgeschlossen.';
+          resultDiv.textContent = output;
+          return;
         }
-      });
-
-      let parsedData;
-      if (currentSide === 'front') {
-        parsedData = parseFront(text);
-      } else {
-        parsedData = parseBack(text);
+        lastResult = output;
+      } catch (err) {
+        statusDiv.textContent = 'Fehler bei OCR: ' + err.message;
+        break;
       }
-      const output = formatOutput(parsedData, currentSide);
-
-      statusDiv.textContent = 'Scan abgeschlossen.';
-      resultDiv.textContent = output;
-    } catch (err) {
-      statusDiv.textContent = 'Fehler bei OCR: ' + err.message;
+      tries++;
+      await new Promise(r => setTimeout(r, 1000)); // 1 Sek Pause vor Retry
     }
+    // Falls keine guten Daten nach retries:
+    statusDiv.textContent = 'Leider keine klaren Daten erkannt.\nBitte nochmal versuchen und ruhig halten.';
+    resultDiv.textContent = lastResult || '';
   }
 
   scanBtn.onclick = doOCR;
