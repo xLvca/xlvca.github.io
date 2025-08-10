@@ -3,446 +3,388 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Aufenthaltstitel Scan & OCR</title>
+<title>Dokumenten Scanner (Aufenthaltstitel & Ausweis)</title>
 <style>
-  /* Dunkles modernes Theme */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
-
-  :root {
-    --bg: #121212;
-    --fg: #e0e0e0;
-    --primary: #0af;
-    --secondary: #08c;
-    --accent: #0ff;
-    --danger: #f55;
-    --shadow: rgba(0,0,0,0.9);
-  }
-
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+  /* Reset */
   * {
     box-sizing: border-box;
   }
-
   body {
-    margin: 0; padding: 0;
-    background: var(--bg);
-    color: var(--fg);
-    font-family: 'Inter', sans-serif;
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    margin: 0; background: #0a0f12; color: #00ffd0; font-family: 'Roboto Mono', monospace;
+    display: flex; flex-direction: column; height: 100vh; align-items: center; justify-content: flex-start;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    user-select:none;
   }
-
   header {
-    padding: 1rem 1.2rem;
-    text-align: center;
-    font-weight: 600;
-    font-size: 1.4rem;
-    letter-spacing: 0.04em;
-    border-bottom: 1px solid #222;
-    user-select: none;
+    padding: 1.2rem; font-size: 1.5rem; font-weight: 700; color: #00ffe0;
+    text-align: center; width: 100%;
+    background: linear-gradient(90deg, #008080 0%, #00fff0 100%);
+    box-shadow: 0 3px 10px #00ffcc88;
   }
-
   main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    max-width: 480px;
-    margin: 0 auto;
-    padding: 0 1rem 1rem;
-    width: 100%;
+    flex-grow: 1; width: 100%; max-width: 480px; padding: 1rem 1rem 1.5rem 1rem;
+    display: flex; flex-direction: column; align-items: center;
   }
-
   #video-container {
-    position: relative;
-    border-radius: 14px;
-    overflow: hidden;
-    margin: 1rem 0 0.8rem;
-    background: #000;
-    box-shadow: 0 0 20px var(--primary);
+    position: relative; width: 100%; aspect-ratio: 4/3; border-radius: 14px;
+    overflow: hidden; box-shadow: 0 0 25px #00ffccaa;
+    background: #111;
   }
-
   video {
-    width: 100%;
-    height: auto;
-    object-fit: cover;
-    aspect-ratio: 4/3;
-    filter: brightness(0.9);
-    user-select: none;
+    width: 100%; height: 100%; object-fit: cover;
+    filter: brightness(1.05) contrast(1.1);
+    will-change: transform;
   }
-
   #scan-frame {
     position: absolute;
-    top: 10%;
-    left: 10%;
-    width: 80%;
-    height: 60%;
-    border: 3px solid var(--accent);
-    border-radius: 8px;
+    border: 3px solid #00ffd0;
+    border-radius: 16px;
+    top: 20%;
+    left: 7.5%;
+    width: 85%;
+    height: 45%;
+    box-shadow: 0 0 20px #00ffccaa;
     pointer-events: none;
-    box-shadow:
-      0 0 8px var(--accent),
-      inset 0 0 10px var(--accent);
-    animation: pulse 3s ease-in-out infinite;
+    animation: pulse 2.4s ease-in-out infinite;
   }
-
   @keyframes pulse {
-    0%, 100% {
-      box-shadow:
-        0 0 8px var(--accent),
-        inset 0 0 10px var(--accent);
-    }
-    50% {
-      box-shadow:
-        0 0 20px var(--accent),
-        inset 0 0 20px var(--accent);
-    }
+    0%, 100% { box-shadow: 0 0 20px #00ffccee; }
+    50% { box-shadow: 0 0 32px #00fffee0; }
   }
-
   #controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.8rem;
+    margin-top: 18px;
+    width: 100%; max-width: 480px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px;
   }
-
-  button, select {
-    background: var(--secondary);
-    color: var(--fg);
-    border: none;
-    border-radius: 8px;
-    padding: 0.5rem 1rem;
-    font-weight: 600;
+  select, button {
+    font-size: 1.1rem; border-radius: 10px; border: none;
+    padding: 12px 18px;
+    background: #003030cc;
+    color: #00ffcc;
+    font-weight: 700;
+    user-select:none;
     cursor: pointer;
-    user-select: none;
-    transition: background-color 0.3s ease;
-    box-shadow: 0 2px 5px var(--shadow);
-  }
-
-  button:hover, select:hover {
-    background: var(--primary);
-  }
-
-  button:active {
-    transform: scale(0.96);
-  }
-
-  #flash-btn {
-    background: #222;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border-radius: 50%;
-    position: relative;
-  }
-
-  #flash-btn svg {
-    fill: var(--accent);
-    width: 24px;
-    height: 24px;
-  }
-
-  #flash-btn.flash-on svg {
-    filter: drop-shadow(0 0 3px var(--accent));
-  }
-
-  #status {
-    min-height: 2.4rem;
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--accent);
-    margin-bottom: 0.4rem;
-    white-space: pre-line;
-  }
-
-  #result {
     flex-grow: 1;
-    background: #222;
-    padding: 1rem;
-    border-radius: 10px;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 0.9rem;
+    transition: background-color 0.25s ease;
+    box-shadow: 0 0 12px #00808088;
+  }
+  select:focus, button:focus {
+    outline: none;
+    background: #005050cc;
+    box-shadow: 0 0 15px #00ffd0ff;
+  }
+  select:hover, button:hover {
+    background: #005050cc;
+    box-shadow: 0 0 20px #00ffe0ff;
+  }
+  #flash-btn {
+    max-width: 110px;
+    background: #003330dd;
+  }
+  #flash-btn.active {
+    background: #00ffccdd;
+    color: #002222;
+  }
+  #status {
+    margin-top: 14px;
+    font-size: 1.1rem;
+    color: #00ffcc;
+    min-height: 1.4em;
+    text-align: center;
+    user-select:none;
+  }
+  #result {
+    margin-top: 22px;
+    background: #001919dd;
+    padding: 15px 18px;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 480px;
+    min-height: 8rem;
+    font-size: 1.05rem;
     white-space: pre-wrap;
-    overflow-y: auto;
-    box-shadow: inset 0 0 10px #000;
+    color: #00ffcc;
+    font-weight: 600;
+    overflow-wrap: break-word;
+    box-shadow: inset 0 0 25px #008080cc;
   }
-
-  select {
-    font-size: 1rem;
-  }
-
   @media (max-width: 480px) {
     body {
-      font-size: 14px;
+      padding: 0 10px 10px 10px;
     }
-    #video-container {
-      margin-top: 0.5rem;
+    select, button {
+      font-size: 1rem;
+      padding: 10px 14px;
+      flex-grow: unset;
+      flex-basis: 48%;
+    }
+    #flash-btn {
+      flex-basis: 100%;
+      max-width: none;
+    }
+    #result {
+      font-size: 1rem;
     }
   }
 </style>
 </head>
 <body>
-
-<header>Aufenthaltstitel Scan & OCR</header>
+<header>Dokumenten Scanner (Aufenthaltstitel & Ausweis)</header>
 
 <main>
-  <div id="video-container">
+  <div id="video-container" aria-label="Kamera Vorschau">
     <video id="video" autoplay playsinline muted></video>
     <div id="scan-frame" aria-hidden="true"></div>
   </div>
 
-  <div id="controls" role="group" aria-label="Bedienelemente">
-    <select id="document-select" aria-label="Dokumenttyp auswählen">
-      <option value="aufenthaltstitel-front">Aufenthaltstitel - Vorderseite</option>
-      <option value="aufenthaltstitel-back">Aufenthaltstitel - Rückseite</option>
-      <option value="ausweis-front">Personalausweis - Vorderseite</option>
-      <option value="ausweis-back">Personalausweis - Rückseite</option>
+  <div id="controls">
+    <select id="doc-type" aria-label="Dokument auswählen">
+      <option value="aufenthaltstitel">Aufenthaltstitel</option>
+      <option value="ausweis">Personalausweis</option>
     </select>
-
-    <button id="scan-btn" aria-label="Scan starten">Scan starten</button>
-    <button id="flash-btn" aria-pressed="false" aria-label="Taschenlampe ein/aus" title="Taschenlampe ein/aus">
-      <svg viewBox="0 0 24 24"><path d="M6 2h12l-3 7h-6L6 2zM9 9h6v11H9V9z"/></svg>
-    </button>
+    <select id="doc-side" aria-label="Dokumentseite auswählen">
+      <option value="front">Vorderseite</option>
+      <option value="back">Rückseite</option>
+    </select>
+    <button id="scan-btn" aria-label="Scan starten">Scannen</button>
+    <button id="flash-btn" aria-label="Blitzlicht an/aus">Blitz</button>
   </div>
 
-  <div id="status" role="status" aria-live="polite">Bereit zum Scannen</div>
-  <pre id="result" aria-live="polite" aria-atomic="true"></pre>
+  <div id="status" role="status" aria-live="polite" aria-atomic="true">Bereit zum Scannen</div>
+  <pre id="result" aria-label="Scan Ergebnis"></pre>
 </main>
 
+<!-- OpenCV.js -->
+<script async src="https://docs.opencv.org/4.x/opencv.js" onload="cv['onRuntimeInitialized']=()=>{console.log('OpenCV.js geladen');}"></script>
+<!-- Tesseract.js -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
 <script>
-(async () => {
+(() => {
   const video = document.getElementById('video');
   const scanFrame = document.getElementById('scan-frame');
   const scanBtn = document.getElementById('scan-btn');
   const flashBtn = document.getElementById('flash-btn');
+  const docTypeSelect = document.getElementById('doc-type');
+  const docSideSelect = document.getElementById('doc-side');
   const statusDiv = document.getElementById('status');
   const resultDiv = document.getElementById('result');
-  const documentSelect = document.getElementById('document-select');
 
-  let stream;
-  let track;
-  let torchOn = false;
-  let currentDocSide = documentSelect.value;
+  let stream = null;
+  let track = null;
+  let flashOn = false;
 
   async function startCamera() {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: 'environment',
           width: { ideal: 1280 },
-          height: { ideal: 960 }
-        },
-        audio: false
+          height: { ideal: 720 },
+          torch: false,
+          focusMode: "continuous"
+        }
       });
       video.srcObject = stream;
       track = stream.getVideoTracks()[0];
-      // Prüfe ob Torch unterstützt wird
-      const imageCapture = new ImageCapture(track);
-      const capabilities = await imageCapture.getPhotoCapabilities();
-      if (capabilities.fillLightMode.includes('torch')) {
-        flashBtn.disabled = false;
-      } else {
-        flashBtn.disabled = true;
-      }
+      statusDiv.textContent = 'Kamera bereit, wähle Dokument und Seite.';
     } catch (e) {
       statusDiv.textContent = 'Kamera konnte nicht gestartet werden: ' + e.message;
-      flashBtn.disabled = true;
     }
   }
 
   function toggleFlash() {
     if (!track) return;
-    const constraints = { advanced: [{ torch: !torchOn }] };
-    track.applyConstraints(constraints).then(() => {
-      torchOn = !torchOn;
-      flashBtn.setAttribute('aria-pressed', torchOn);
-      flashBtn.classList.toggle('flash-on', torchOn);
-      // Blitz sehr dezent machen -> hier keine extra Helligkeit, nur An/Aus
-    }).catch(() => {
-      statusDiv.textContent = 'Torch konnte nicht umgeschaltet werden.';
-    });
+    const capabilities = track.getCapabilities();
+    if (!capabilities.torch) {
+      statusDiv.textContent = 'Blitzlicht nicht verfügbar auf diesem Gerät.';
+      return;
+    }
+    flashOn = !flashOn;
+    track.applyConstraints({ advanced: [{ torch: flashOn }] });
+    flashBtn.classList.toggle('active', flashOn);
+    statusDiv.textContent = flashOn ? 'Blitz aktiviert' : 'Blitz deaktiviert';
+  }
+  flashBtn.addEventListener('click', toggleFlash);
+
+  // Berechnet das Crop Rechteck des Scanrahmens relativ zum Video
+  function getCropRect() {
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = scanFrame.getBoundingClientRect();
+    return {
+      x: (frameRect.left - videoRect.left) / videoRect.width,
+      y: (frameRect.top - videoRect.top) / videoRect.height,
+      width: frameRect.width / videoRect.width,
+      height: frameRect.height / videoRect.height
+    };
   }
 
-  function cropCanvasFromVideo(videoEl, cropRect) {
-    // cropRect = {x, y, width, height} relative 0..1 Werte vom Video Element
+  function cropCanvasFromVideo(video, crop) {
     const canvas = document.createElement('canvas');
-    canvas.width = cropRect.width * videoEl.videoWidth;
-    canvas.height = cropRect.height * videoEl.videoHeight;
+    canvas.width = video.videoWidth * crop.width;
+    canvas.height = video.videoHeight * crop.height;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(
-      videoEl,
-      cropRect.x * videoEl.videoWidth,
-      cropRect.y * videoEl.videoHeight,
+      video,
+      video.videoWidth * crop.x,
+      video.videoHeight * crop.y,
       canvas.width,
       canvas.height,
-      0, 0, canvas.width, canvas.height
+      0,
+      0,
+      canvas.width,
+      canvas.height
     );
     return canvas;
   }
 
-  // OCR Parsers für Aufenthaltstitel Vorderseite
-  function parseAufenthaltstitelFront(text) {
-    text = text.toUpperCase();
-    const data = {};
+  // Bildvorverarbeitung mit OpenCV.js (Graustufen, Kontrast, Schärfen, adaptive Binarisierung)
+  function preprocessImage(canvas) {
+    try {
+      let src = cv.imread(canvas);
+      cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY);
 
-    // Dokumentnummer (typisch 8-12 alphanumerisch) evtl. nach "DOKUMENTNUMMER" oder "DOK.NR"
-    let docNr = null;
-    let docNrRegex = /(DOKUMENTNUMMER|DOK\.NR|DOCUMENT NUMBER|DOC NR|NR)[\s:]*([A-Z0-9]{8,12})/i;
-    let m = text.match(docNrRegex);
-    if (m && m[2]) docNr = m[2];
+      // Histogramm gleichrichten (Kontrast)
+      let dst = new cv.Mat();
+      cv.equalizeHist(src, dst);
 
-    // Wenn nicht gefunden: versuche die erste 8-12 Zeichen alphanumerisch oben rechts zu finden
-    if (!docNr) {
-      let lines = text.split('\n').slice(0, 10).join('\n');
-      let fallback = lines.match(/[A-Z0-9]{8,12}/i);
-      if (fallback) docNr = fallback[0];
+      // Schärfen (Kernel)
+      let kernel = cv.Mat.ones(3, 3, cv.CV_32F);
+      kernel.data32F.set([0, -1, 0, -1, 5, -1, 0, -1, 0]);
+      cv.filter2D(dst, dst, cv.CV_8U, kernel);
+
+      // Adaptive Binarisierung
+      cv.adaptiveThreshold(dst, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv.THRESH_BINARY, 15, 5);
+
+      cv.imshow(canvas, dst);
+
+      src.delete(); dst.delete(); kernel.delete();
+    } catch (e) {
+      console.warn("OpenCV preprocessing failed:", e);
     }
-    if (docNr) data.Dokumentnummer = docNr;
+    return canvas;
+  }
 
-    // Geburtsdatum nach "GEBURTSDATUM" oder "DATE OF BIRTH" und folgendem Datum
-    let dob = null;
-    let dobRegex = /(GEBURTSDATUM|DATE OF BIRTH)[\s:\-]*([0-3]?\d)[\.\-\/]?([01]?\d)[\.\-\/]?(\d{4})/i;
-    let dobMatch = text.match(dobRegex);
-    if (!dobMatch) {
-      // Versuch in nächster Zeile
-      let lines = text.split('\n');
-      for (let i=0; i < lines.length; i++) {
-        if (lines[i].includes('GEBURTSDATUM') || lines[i].includes('DATE OF BIRTH')) {
-          let nextLine = lines[i+1] || '';
-          let dateMatch = nextLine.match(/([0-3]?\d)[\.\-\/]?([01]?\d)[\.\-\/]?(\d{4})/);
-          if (dateMatch) {
-            dobMatch = [null, null, dateMatch[1], dateMatch[2], dateMatch[3]];
-            break;
-          }
+  // Mehrfach-OCR mit leicht unterschiedlichen Einstellungen
+  async function doOCR(canvas) {
+    statusDiv.textContent = 'OCR läuft... Bitte Geduld.';
+    const worker = Tesseract.createWorker({
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}%`;
         }
       }
-    }
-    if (dobMatch) {
-      let day = dobMatch[2].padStart(2,'0');
-      let month = dobMatch[3].padStart(2,'0');
-      let year = dobMatch[4];
-      dob = `${day}.${month}.${year}`;
-      data.Geburtsdatum = dob;
-    }
+    });
+    await worker.load();
+    await worker.loadLanguage('deu');
+    await worker.initialize('deu');
 
-    return data;
+    // 1. Normaler Lauf
+    let { data: { text } } = await worker.recognize(canvas);
+
+    // 2. Lauf mit Invertierung (Versuch, bei schlechtem Scan)
+    const ctx = canvas.getContext('2d');
+    ctx.globalCompositeOperation = 'difference';
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let { data: { text: invText } } = await worker.recognize(canvas);
+
+    await worker.terminate();
+
+    // Besseren Text zurückgeben
+    return text.length >= invText.length ? text : invText;
   }
 
-  // OCR Parsers für Aufenthaltstitel Rückseite (MRZ und Adresse)
-  function parseAufenthaltstitelBack(text) {
-    text = text.toUpperCase();
-    const data = {};
+  // Daten aus OCR Text extrahieren (DOB, Ablaufdatum, Nummer, MRZ)
+  function extractData(text, docType, docSide) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+    let dob = null, expiry = null, docNum = null, mrz = null;
 
-    // MRZ Linien mit mind. 2 '<'
-    const mrzLines = text.split('\n').filter(l => (l.match(/</g) || []).length >= 2);
-    if (mrzLines.length > 0) {
-      data.MRZ = mrzLines.join('\n');
-    }
+    // Suche nach Datum (tt.mm.jjjj oder tt-mm-jjjj)
+    const dateRegex = /\b(\d{2}[.\-\/]\d{2}[.\-\/]\d{4})\b/g;
+    const matches = text.match(dateRegex) || [];
 
-    // Adresse mit PLZ und Ort
-    const addrMatch = text.match(/(\d{5})\s+([A-ZÄÖÜß\s\-]+)/);
-    if (addrMatch) data.Adresse = addrMatch[0].trim();
+    // Beispiel: Einfach das erste Datum als DOB und das letzte als Ablaufdatum
+    if (matches.length >= 1) dob = matches[0];
+    if (matches.length >= 2) expiry = matches[matches.length - 1];
 
-    return data;
+    // Suche nach Nummern (z.B. 9-12stellige alphanumerisch)
+    const numRegex = /\b([A-Z0-9]{6,15})\b/g;
+    const nums = text.match(numRegex) || [];
+    if (nums.length) docNum = nums[0];
+
+    // MRZ suchen (2 oder 3 Zeilen, aus denen OCR sehr viele <, > etc sieht)
+    const mrzLines = lines.filter(line => /^[A-Z0-9<]{10,}$/.test(line));
+    if (mrzLines.length >= 2) mrz = mrzLines.slice(0,3).join('\n');
+
+    return { dob, expiry, docNum, mrz };
   }
 
-  // Parsers für Personalausweis vorne und hinten können hier ähnlich ergänzt werden
-
-  // Formatierung der Ausgabe
-  function formatData(data) {
-    if (!data || Object.keys(data).length === 0) return "Keine relevanten Daten erkannt.\nBitte nochmal versuchen und ruhig halten.";
-    let out = '';
-    for (const [k,v] of Object.entries(data)) {
-      out += `${k}: ${v}\n`;
-    }
-    return out.trim();
-  }
-
-  async function doScan() {
-    if (!video.videoWidth) {
-      statusDiv.textContent = 'Video nicht verfügbar, bitte warten...';
+  async function scanDocument() {
+    if (!video.videoWidth || !video.videoHeight) {
+      statusDiv.textContent = 'Video noch nicht bereit.';
       return;
     }
+    statusDiv.textContent = 'Scanne... bitte halte das Dokument ruhig.';
+    scanBtn.disabled = true;
+    flashBtn.disabled = true;
 
-    statusDiv.textContent = 'Scanne... Bitte ruhig halten!';
-    resultDiv.textContent = '';
-
-    // Crop Rechteck genau passend zum scanFrame in Verhältnis zum Video (so wie der Rahmen)
-    const rect = scanFrame.getBoundingClientRect();
-    const videoRect = video.getBoundingClientRect();
-    const cropRect = {
-      x: (rect.left - videoRect.left) / videoRect.width,
-      y: (rect.top - videoRect.top) / videoRect.height,
-      width: rect.width / videoRect.width,
-      height: rect.height / videoRect.height
-    };
-
-    const canvas = cropCanvasFromVideo(video, cropRect);
-    // Für OCR besser kontrast verstärken:
-    const ctx = canvas.getContext('2d');
-    let imgData = ctx.getImageData(0,0,canvas.width, canvas.height);
-    for(let i=0; i < imgData.data.length; i +=4){
-      // Simple Kontrastverstärkung (linear)
-      for(let c=0;c<3;c++){
-        imgData.data[i+c] = Math.min(255, Math.max(0, 1.2*(imgData.data[i+c]-128)+128));
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
-
-    // OCR mit Tesseract
     try {
-      const { data: { text } } = await Tesseract.recognize(canvas, 'deu', { logger: m => {
-        // Optional: Status update z.B. m.status === 'recognizing text' && statusDiv.textContent = 'Erkennung läuft...';
-      }});
+      const crop = getCropRect();
+      let canvas = cropCanvasFromVideo(video, crop);
+      canvas = preprocessImage(canvas);
+      const ocrText = await doOCR(canvas);
+      const data = extractData(ocrText, docTypeSelect.value, docSideSelect.value);
 
-      let extractedData = {};
+      let displayText = `Dokument: ${docTypeSelect.options[docTypeSelect.selectedIndex].text}\nSeite: ${docSideSelect.options[docSideSelect.selectedIndex].text}\n\n`;
+      displayText += `OCR Rohtext:\n${ocrText.trim()}\n\n`;
+      displayText += `Extrahierte Daten:\n`;
+      displayText += `Geburtsdatum: ${data.dob || '-'}\n`;
+      displayText += `Ablaufdatum: ${data.expiry || '-'}\n`;
+      displayText += `Dokumentnummer: ${data.docNum || '-'}\n`;
+      displayText += `MRZ:\n${data.mrz || '-'}\n`;
 
-      switch(currentDocSide) {
-        case 'aufenthaltstitel-front':
-          extractedData = parseAufenthaltstitelFront(text);
-          break;
-        case 'aufenthaltstitel-back':
-          extractedData = parseAufenthaltstitelBack(text);
-          break;
-        case 'ausweis-front':
-        case 'ausweis-back':
-          // Placeholder: noch nicht implementiert
-          extractedData = { Info: 'Support für Ausweis bald verfügbar' };
-          break;
-      }
-
-      resultDiv.textContent = formatData(extractedData);
-      statusDiv.textContent = extractedData && Object.keys(extractedData).length > 0 ? 'Scan erfolgreich!' : 'Keine Daten erkannt. Bitte nochmal versuchen.';
+      resultDiv.textContent = displayText;
+      statusDiv.textContent = 'Scan fertig. Prüfe das Ergebnis.';
     } catch (e) {
-      statusDiv.textContent = 'Fehler bei OCR: ' + e.message;
+      statusDiv.textContent = 'Fehler beim Scannen: ' + e.message;
+      console.error(e);
     }
+    scanBtn.disabled = false;
+    flashBtn.disabled = false;
   }
 
-  scanBtn.addEventListener('click', () => {
-    doScan();
-  });
+  scanBtn.addEventListener('click', scanDocument);
 
-  flashBtn.addEventListener('click', () => {
-    toggleFlash();
-  });
+  // Seite & Dokumentenwechsel - Update Scanrahmen (optional)
+  function updateScanFrame() {
+    // Unterschiedliche Scanrahmen je Dokument und Seite
+    if (docTypeSelect.value === 'aufenthaltstitel') {
+      if (docSideSelect.value === 'front') {
+        scanFrame.style.top = '20%'; scanFrame.style.left = '7.5%';
+        scanFrame.style.width = '85%'; scanFrame.style.height = '45%';
+      } else {
+        scanFrame.style.top = '25%'; scanFrame.style.left = '10%';
+        scanFrame.style.width = '80%'; scanFrame.style.height = '50%';
+      }
+    } else { // ausweis
+      if (docSideSelect.value === 'front') {
+        scanFrame.style.top = '18%'; scanFrame.style.left = '10%';
+        scanFrame.style.width = '80%'; scanFrame.style.height = '50%';
+      } else {
+        scanFrame.style.top = '22%'; scanFrame.style.left = '8%';
+        scanFrame.style.width = '83%'; scanFrame.style.height = '47%';
+      }
+    }
+  }
+  docTypeSelect.addEventListener('change', updateScanFrame);
+  docSideSelect.addEventListener('change', updateScanFrame);
+  updateScanFrame();
 
-  documentSelect.addEventListener('change', e => {
-    currentDocSide = e.target.value;
-    resultDiv.textContent = '';
-    statusDiv.textContent = 'Dokumenttyp geändert. Bereit zum Scannen.';
-  });
+  startCamera();
 
-  await startCamera();
-
-  // Clean up on page unload
-  window.addEventListener('beforeunload', () => {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-  });
 })();
 </script>
 
