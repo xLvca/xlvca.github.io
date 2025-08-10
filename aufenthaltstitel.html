@@ -2,53 +2,131 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Aufenthaltstitel OCR Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Aufenthaltstitel Scanner</title>
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
   body {
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-    max-width: 480px;
-    margin: auto;
-    padding: 1rem;
-    background: #f9f9f9;
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+      Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 1rem 0 2rem;
   }
   h1 {
-    text-align: center;
-    color: #2c3e50;
+    margin: 0 0 12px;
+    font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: 0.04em;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+  #video-container {
+    position: relative;
+    width: 90vw;
+    max-width: 400px;
+    aspect-ratio: 5/3;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    background: #000;
   }
   video {
     width: 100%;
-    border-radius: 8px;
-    border: 1px solid #ddd;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* Scan-Rahmen Overlay */
+  #frame {
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 85%;
+    height: 58%;
+    max-width: 340px;
+    max-height: 200px;
+    transform: translate(-50%, -50%);
+    border: 3px solid rgba(255,255,255,0.8);
+    border-radius: 12px;
+    box-shadow:
+      0 0 12px 2px rgba(52,152,219,0.7),
+      inset 0 0 20px 2px rgba(255,255,255,0.6);
+    animation: pulse 2.5s ease-in-out infinite;
+    backdrop-filter: brightness(0.85);
+  }
+  @keyframes pulse {
+    0%, 100% {
+      border-color: rgba(52,152,219,0.8);
+      box-shadow:
+        0 0 12px 2px rgba(52,152,219,0.7),
+        inset 0 0 20px 2px rgba(255,255,255,0.6);
+    }
+    50% {
+      border-color: rgba(52,152,219,0.4);
+      box-shadow:
+        0 0 8px 1px rgba(52,152,219,0.3),
+        inset 0 0 12px 1px rgba(255,255,255,0.3);
+    }
+  }
+  #controls {
+    margin-top: 1rem;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
   }
   button {
-    margin: 0.5rem 0.2rem;
-    padding: 0.6rem 1rem;
-    font-size: 1rem;
+    background: #2980b9;
     border: none;
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  #frontBtn { background: #3498db; color: white; }
-  #backBtn { background: #e67e22; color: white; }
-  #scanBtn {
-    width: 100%;
-    background: #27ae60;
+    border-radius: 8px;
+    padding: 0.65rem 1.6rem;
+    font-weight: 600;
+    font-size: 1rem;
     color: white;
-    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    transition: background-color 0.25s ease;
+    flex: 1;
+  }
+  button[aria-pressed="true"] {
+    background: #27ae60;
+    box-shadow: 0 4px 10px rgba(39,174,96,0.7);
+  }
+  button:hover {
+    background-color: #1f6391;
+  }
+  #scanBtn {
+    margin-top: 1rem;
+    width: 90vw;
+    max-width: 400px;
+    background: #e67e22;
+    box-shadow: 0 4px 12px rgba(230,126,34,0.8);
+    font-weight: 700;
   }
   #status {
-    margin: 1rem 0;
+    margin-top: 1rem;
+    font-size: 1rem;
     font-weight: 600;
-    color: #34495e;
+    min-height: 24px;
+    text-align: center;
+    color: #f1c40f;
+    text-shadow: 0 0 3px rgba(0,0,0,0.7);
   }
   #result {
-    white-space: pre-wrap;
-    background: white;
+    margin-top: 1rem;
+    background: rgba(255 255 255 / 0.15);
+    border-radius: 12px;
     padding: 1rem;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    min-height: 6rem;
+    color: #ecf0f1;
+    min-height: 100px;
+    white-space: pre-wrap;
+    font-size: 1rem;
+    font-weight: 500;
+    user-select: text;
   }
 </style>
 </head>
@@ -56,18 +134,21 @@
 
 <h1>Aufenthaltstitel Scanner</h1>
 
-<video id="video" autoplay playsinline></video>
-
-<div>
-  <button id="frontBtn" aria-pressed="true">Vorderseite</button>
-  <button id="backBtn" aria-pressed="false">Rückseite</button>
+<div id="video-container">
+  <video id="video" autoplay playsinline></video>
+  <div id="frame"></div>
 </div>
 
-<button id="scanBtn">Scan starten</button>
+<div id="controls" role="radiogroup" aria-label="Dokumentseite wählen">
+  <button id="frontBtn" aria-pressed="true" role="radio">Vorderseite</button>
+  <button id="backBtn" aria-pressed="false" role="radio">Rückseite</button>
+</div>
 
-<div id="status">Bitte Vorder- oder Rückseite wählen und Scan starten.</div>
+<button id="scanBtn" aria-live="polite" aria-label="Scan starten">Scan starten</button>
 
-<pre id="result"></pre>
+<div id="status" aria-live="polite" role="status">Bitte Vorderseite scannen</div>
+
+<pre id="result" aria-live="polite"></pre>
 
 <canvas id="canvas" style="display:none;"></canvas>
 
@@ -85,21 +166,25 @@
 
   let currentSide = 'front';
 
-  frontBtn.onclick = () => {
-    currentSide = 'front';
-    frontBtn.setAttribute('aria-pressed', 'true');
-    backBtn.setAttribute('aria-pressed', 'false');
-    statusDiv.textContent = 'Vorderseite ausgewählt.';
-    resultDiv.textContent = '';
-  };
+  function setSide(side) {
+    currentSide = side;
+    if (side === 'front') {
+      frontBtn.setAttribute('aria-pressed', 'true');
+      backBtn.setAttribute('aria-pressed', 'false');
+      statusDiv.textContent = 'Bitte Vorderseite scannen. ' +
+        'Achte auf „GEBURTSDATUM“ oder „DATE OF BIRTH“ und Dokumentnummer oben rechts.';
+      resultDiv.textContent = '';
+    } else {
+      frontBtn.setAttribute('aria-pressed', 'false');
+      backBtn.setAttribute('aria-pressed', 'true');
+      statusDiv.textContent = 'Bitte Rückseite scannen. ' +
+        'Achte auf MRZ-Muster (<<<<<) und Adresse unten rechts.';
+      resultDiv.textContent = '';
+    }
+  }
 
-  backBtn.onclick = () => {
-    currentSide = 'back';
-    frontBtn.setAttribute('aria-pressed', 'false');
-    backBtn.setAttribute('aria-pressed', 'true');
-    statusDiv.textContent = 'Rückseite ausgewählt.';
-    resultDiv.textContent = '';
-  };
+  frontBtn.onclick = () => setSide('front');
+  backBtn.onclick = () => setSide('back');
 
   async function setupCamera() {
     try {
@@ -116,65 +201,96 @@
     }
   }
 
-  function parseAufenthaltstitel(text, side) {
-    text = text.toUpperCase();
+  // Hilfsfunktion: Versuche Datum im Format "XX XX XXXX" in ISO yyyy-mm-dd zu parsen
+  function parseDate(d1, d2, d3) {
+    // d1, d2, d3 können je nach Format Tag, Monat, Jahr sein - Wir nehmen an Tag Monat Jahr
+    if (!d1 || !d2 || !d3) return null;
+    if (d3.length !== 4) return null;
+    // Sicherstellen, dass Zahlen vorliegen
+    if (isNaN(d1) || isNaN(d2) || isNaN(d3)) return null;
+    // Pad Tag und Monat
+    let day = d1.padStart(2,'0');
+    let month = d2.padStart(2,'0');
+    let year = d3;
+    // Validieren Tag/Monat Grundlegend
+    if (parseInt(day) < 1 || parseInt(day) > 31) return null;
+    if (parseInt(month) < 1 || parseInt(month) > 12) return null;
+    return `${year}-${month}-${day}`;
+  }
+
+  // Parsing Aufenthaltstitel vorderseite mit optimiertem Muster
+  function parseFront(text) {
     const data = {};
+    text = text.toUpperCase();
 
-    if (side === 'front') {
-      // DOB: Suche nach Datum, Beispiel: "GEBURTSDATUM 15 03 1985" oder "DOB 15 03 1985"
-      let dobMatch = text.match(/(GEBURTSDATUM|DOB)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
-      if (dobMatch) {
-        data.DOB = `${dobMatch[3]}-${dobMatch[2]}-${dobMatch[4]}`; // yyyy-mm-dd oder einfach so
-      }
+    // Suche nach GEBURTSDATUM oder DATE OF BIRTH + Datum (XX XX XXXX)
+    let dobMatch = text.match(/(GEBURTSDATUM|DATE OF BIRTH)[\s:\-]*([0-3]?\d)[\s.\-\/]([01]?\d)[\s.\-\/](\d{4})/);
+    if (dobMatch) {
+      let isoDate = parseDate(dobMatch[2], dobMatch[3], dobMatch[4]);
+      if (isoDate) data.DOB = isoDate;
+    }
 
-      // Ablaufdatum: "GÜLTIG BIS" oder "EXPIRY" + Datum, Beispiel "GÜLTIG BIS 31 12 2026"
-      let expMatch = text.match(/(GÜLTIG\s*BIS|EXPIRY)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
-      if (expMatch) {
-        data.Expiry = `${expMatch[3]}-${expMatch[2]}-${expMatch[4]}`;
+    // Dokumentnummer oben rechts (meist ein 9-stelliger alphanumerischer String)
+    // Wir versuchen Zeilen zu finden, die 8-12 Zeichen haben, und evtl. mit "Dokumentnummer", "Nr" oder ähnliches markieren.
+    let docNrMatch = text.match(/(DOKUMENTNUMMER|DOCUMENT NUMBER|DOC NR|NR)[\s:\-]*([A-Z0-9]{6,12})/);
+    if (docNrMatch) {
+      data.DocumentNumber = docNrMatch[2];
+    } else {
+      // Fallback: Suche nach 9-12 alphanumerischen Zeichen am Ende einer Zeile (Oberer rechter Bereich evtl)
+      let altDocNr = text.match(/(?:\n|^)([A-Z0-9]{9,12})(?:\n|$)/);
+      if (altDocNr) {
+        data.DocumentNumber = altDocNr[1];
       }
+    }
 
-      // Ausweisnummer: oft 9-stellig alphanumerisch, Beispiel "AUSWEIS-NR: X12345678"
-      let nrMatch = text.match(/(AUSWEIS[-\s]?NR|DOC[-\s]?NR|DOKUMENT[-\s]?NR)\s*[:\-]?\s*([A-Z0-9]{6,12})/);
-      if (nrMatch) {
-        data.DocumentNumber = nrMatch[2];
-      }
-
-    } else if (side === 'back') {
-      // Suche nach MRZ-ähnlichen Zeilen mit "<"
-      let mrzMatch = text.match(/([A-Z0-9<]{10,50})/g);
-      if (mrzMatch) {
-        // Filter Zeilen mit vielen '<'
-        let candidates = mrzMatch.filter(line => (line.match(/</g) || []).length >= 2);
-        if (candidates.length) {
-          data.MRZ = candidates.join('\n');
-        }
-      }
-
-      // Adresse: Suche nach Straßenname, PLZ etc. (etwas heuristisch)
-      // z.B. Zeile mit PLZ (5 Ziffern), danach Ort
-      let addrMatch = text.match(/(\d{5})\s+([A-ZÄÖÜß\s\-]+)/);
-      if (addrMatch) {
-        data.Address = addrMatch[0].trim();
-      }
-
-      // Ausstellungsdatum oder andere Daten können hinzugefügt werden
-      let issueMatch = text.match(/(AUSSTELLUNGSDATUM|ISSUE DATE)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
-      if (issueMatch) {
-        data.IssueDate = `${issueMatch[3]}-${issueMatch[2]}-${issueMatch[4]}`;
-      }
+    // Seriennummer unten rechts (kleiner Text, meist 6-8-stellig)
+    let serNrMatch = text.match(/(SERIAL|SERIENNUMMER|SN|NR)[\s:\-]*([A-Z0-9]{5,10})/);
+    if (serNrMatch) {
+      data.SerialNumber = serNrMatch[2];
     }
 
     return data;
   }
 
-  function formatOutput(data) {
+  // Parsing Rückseite mit MRZ und Adresse
+  function parseBack(text) {
+    const data = {};
+    text = text.toUpperCase();
+
+    // MRZ-Zeilen mit vielen < Zeichen (mind. 2 pro Zeile)
+    let mrzLines = text.split('\n').filter(line => (line.match(/</g) || []).length >= 2);
+    if (mrzLines.length > 0) {
+      data.MRZ = mrzLines.join('\n');
+    }
+
+    // Adresse: 5-stellige PLZ + Ort (z.B. 12345 BERLIN)
+    let addrMatch = text.match(/(\d{5})\s+([A-ZÄÖÜß\s\-]+)/);
+    if (addrMatch) {
+      data.Address = addrMatch[0].trim();
+    }
+
+    // Ausstellungsdatum (optional)
+    let issueMatch = text.match(/(AUSSTELLUNGSDATUM|ISSUE DATE)[\s:\-]*([0-3]?\d)[\s.\-\/]([01]?\d)[\s.\-\/](\d{4})/);
+    if (issueMatch) {
+      let isoDate = parseDate(issueMatch[2], issueMatch[3], issueMatch[4]);
+      if (isoDate) data.IssueDate = isoDate;
+    }
+
+    return data;
+  }
+
+  function formatOutput(data, side) {
     if (!data || Object.keys(data).length === 0) {
-      return 'Keine relevanten Daten erkannt.';
+      if (side === 'front') {
+        return "Keine relevanten Daten erkannt.\nBitte still halten und Vorderseite korrekt positionieren.";
+      } else {
+        return "Keine relevanten Daten erkannt.\nBitte Rückseite korrekt positionieren.";
+      }
     }
     let out = '';
     if (data.DOB) out += `Geburtsdatum: ${data.DOB}\n`;
-    if (data.Expiry) out += `Ablaufdatum: ${data.Expiry}\n`;
     if (data.DocumentNumber) out += `Dokumentnummer: ${data.DocumentNumber}\n`;
+    if (data.SerialNumber) out += `Seriennummer: ${data.SerialNumber}\n`;
     if (data.MRZ) out += `MRZ:\n${data.MRZ}\n`;
     if (data.Address) out += `Adresse: ${data.Address}\n`;
     if (data.IssueDate) out += `Ausstellungsdatum: ${data.IssueDate}\n`;
@@ -182,13 +298,8 @@
   }
 
   async function doOCR() {
-    if (!currentSide) {
-      statusDiv.textContent = 'Bitte Vorder- oder Rückseite auswählen.';
-      return;
-    }
-    statusDiv.textContent = 'Bild wird verarbeitet...';
+    statusDiv.textContent = 'Bild wird aufgenommen... Bitte still halten!';
     resultDiv.textContent = '';
-
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -197,17 +308,21 @@
       const { data: { text } } = await Tesseract.recognize(canvas, 'deu', {
         logger: m => {
           if (m.status === 'recognizing text') {
-            statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}%`;
+            statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}% - Bitte still halten!`;
           }
         }
       });
 
-      const parsedData = parseAufenthaltstitel(text, currentSide);
-      const output = formatOutput(parsedData);
+      let parsedData;
+      if (currentSide === 'front') {
+        parsedData = parseFront(text);
+      } else {
+        parsedData = parseBack(text);
+      }
+      const output = formatOutput(parsedData, currentSide);
 
       statusDiv.textContent = 'Scan abgeschlossen.';
       resultDiv.textContent = output;
-
     } catch (err) {
       statusDiv.textContent = 'Fehler bei OCR: ' + err.message;
     }
@@ -216,6 +331,8 @@
   scanBtn.onclick = doOCR;
 
   setupCamera();
+  setSide('front');
 </script>
+
 </body>
 </html>
