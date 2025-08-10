@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Aufenthaltstitel OCR Scanner</title>
+<style>
+  body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    max-width: 480px;
+    margin: auto;
+    padding: 1rem;
+    background: #f9f9f9;
+  }
+  h1 {
+    text-align: center;
+    color: #2c3e50;
+  }
+  video {
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+  }
+  button {
+    margin: 0.5rem 0.2rem;
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  #frontBtn { background: #3498db; color: white; }
+  #backBtn { background: #e67e22; color: white; }
+  #scanBtn {
+    width: 100%;
+    background: #27ae60;
+    color: white;
+    font-weight: bold;
+  }
+  #status {
+    margin: 1rem 0;
+    font-weight: 600;
+    color: #34495e;
+  }
+  #result {
+    white-space: pre-wrap;
+    background: white;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    min-height: 6rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Aufenthaltstitel Scanner</h1>
+
+<video id="video" autoplay playsinline></video>
+
+<div>
+  <button id="frontBtn" aria-pressed="true">Vorderseite</button>
+  <button id="backBtn" aria-pressed="false">Rückseite</button>
+</div>
+
+<button id="scanBtn">Scan starten</button>
+
+<div id="status">Bitte Vorder- oder Rückseite wählen und Scan starten.</div>
+
+<pre id="result"></pre>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const statusDiv = document.getElementById('status');
+  const resultDiv = document.getElementById('result');
+
+  const frontBtn = document.getElementById('frontBtn');
+  const backBtn = document.getElementById('backBtn');
+  const scanBtn = document.getElementById('scanBtn');
+
+  let currentSide = 'front';
+
+  frontBtn.onclick = () => {
+    currentSide = 'front';
+    frontBtn.setAttribute('aria-pressed', 'true');
+    backBtn.setAttribute('aria-pressed', 'false');
+    statusDiv.textContent = 'Vorderseite ausgewählt.';
+    resultDiv.textContent = '';
+  };
+
+  backBtn.onclick = () => {
+    currentSide = 'back';
+    frontBtn.setAttribute('aria-pressed', 'false');
+    backBtn.setAttribute('aria-pressed', 'true');
+    statusDiv.textContent = 'Rückseite ausgewählt.';
+    resultDiv.textContent = '';
+  };
+
+  async function setupCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false
+      });
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => resolve();
+      });
+    } catch (err) {
+      statusDiv.textContent = 'Kamera kann nicht geöffnet werden: ' + err.message;
+    }
+  }
+
+  function parseAufenthaltstitel(text, side) {
+    text = text.toUpperCase();
+    const data = {};
+
+    if (side === 'front') {
+      // DOB: Suche nach Datum, Beispiel: "GEBURTSDATUM 15 03 1985" oder "DOB 15 03 1985"
+      let dobMatch = text.match(/(GEBURTSDATUM|DOB)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
+      if (dobMatch) {
+        data.DOB = `${dobMatch[3]}-${dobMatch[2]}-${dobMatch[4]}`; // yyyy-mm-dd oder einfach so
+      }
+
+      // Ablaufdatum: "GÜLTIG BIS" oder "EXPIRY" + Datum, Beispiel "GÜLTIG BIS 31 12 2026"
+      let expMatch = text.match(/(GÜLTIG\s*BIS|EXPIRY)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
+      if (expMatch) {
+        data.Expiry = `${expMatch[3]}-${expMatch[2]}-${expMatch[4]}`;
+      }
+
+      // Ausweisnummer: oft 9-stellig alphanumerisch, Beispiel "AUSWEIS-NR: X12345678"
+      let nrMatch = text.match(/(AUSWEIS[-\s]?NR|DOC[-\s]?NR|DOKUMENT[-\s]?NR)\s*[:\-]?\s*([A-Z0-9]{6,12})/);
+      if (nrMatch) {
+        data.DocumentNumber = nrMatch[2];
+      }
+
+    } else if (side === 'back') {
+      // Suche nach MRZ-ähnlichen Zeilen mit "<"
+      let mrzMatch = text.match(/([A-Z0-9<]{10,50})/g);
+      if (mrzMatch) {
+        // Filter Zeilen mit vielen '<'
+        let candidates = mrzMatch.filter(line => (line.match(/</g) || []).length >= 2);
+        if (candidates.length) {
+          data.MRZ = candidates.join('\n');
+        }
+      }
+
+      // Adresse: Suche nach Straßenname, PLZ etc. (etwas heuristisch)
+      // z.B. Zeile mit PLZ (5 Ziffern), danach Ort
+      let addrMatch = text.match(/(\d{5})\s+([A-ZÄÖÜß\s\-]+)/);
+      if (addrMatch) {
+        data.Address = addrMatch[0].trim();
+      }
+
+      // Ausstellungsdatum oder andere Daten können hinzugefügt werden
+      let issueMatch = text.match(/(AUSSTELLUNGSDATUM|ISSUE DATE)\s*[:\-]?\s*(\d{2})[ .\-\/](\d{2})[ .\-\/](\d{4})/);
+      if (issueMatch) {
+        data.IssueDate = `${issueMatch[3]}-${issueMatch[2]}-${issueMatch[4]}`;
+      }
+    }
+
+    return data;
+  }
+
+  function formatOutput(data) {
+    if (!data || Object.keys(data).length === 0) {
+      return 'Keine relevanten Daten erkannt.';
+    }
+    let out = '';
+    if (data.DOB) out += `Geburtsdatum: ${data.DOB}\n`;
+    if (data.Expiry) out += `Ablaufdatum: ${data.Expiry}\n`;
+    if (data.DocumentNumber) out += `Dokumentnummer: ${data.DocumentNumber}\n`;
+    if (data.MRZ) out += `MRZ:\n${data.MRZ}\n`;
+    if (data.Address) out += `Adresse: ${data.Address}\n`;
+    if (data.IssueDate) out += `Ausstellungsdatum: ${data.IssueDate}\n`;
+    return out.trim();
+  }
+
+  async function doOCR() {
+    if (!currentSide) {
+      statusDiv.textContent = 'Bitte Vorder- oder Rückseite auswählen.';
+      return;
+    }
+    statusDiv.textContent = 'Bild wird verarbeitet...';
+    resultDiv.textContent = '';
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    try {
+      const { data: { text } } = await Tesseract.recognize(canvas, 'deu', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            statusDiv.textContent = `OCR: ${Math.round(m.progress * 100)}%`;
+          }
+        }
+      });
+
+      const parsedData = parseAufenthaltstitel(text, currentSide);
+      const output = formatOutput(parsedData);
+
+      statusDiv.textContent = 'Scan abgeschlossen.';
+      resultDiv.textContent = output;
+
+    } catch (err) {
+      statusDiv.textContent = 'Fehler bei OCR: ' + err.message;
+    }
+  }
+
+  scanBtn.onclick = doOCR;
+
+  setupCamera();
+</script>
+</body>
+</html>
