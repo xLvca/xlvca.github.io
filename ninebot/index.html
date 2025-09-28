@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ninebot BLE Control</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #121212;
+    color: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem;
+  }
+  select, button {
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+  }
+  #status {
+    margin-top: 1rem;
+    font-weight: bold;
+    color: #ff9800;
+  }
+  #battery {
+    margin-top: 0.5rem;
+    font-weight: bold;
+    color: #4caf50;
+  }
+</style>
+</head>
+<body>
+
+<h1>Ninebot BLE Control</h1>
+
+<select id="deviceSelect"></select>
+<button id="scanBtn">Scan Devices</button>
+<button id="connectBtn">Connect</button>
+
+<div id="status"></div>
+<div id="battery">Battery: --%</div>
+
+<script type="module">
+// Status messages
+const stateMessages = {
+  CON: "Please wait – we're connecting",
+  PING: "Please wait – we're connecting",
+  PRE: "Tap the power button on your scooter.",
+  PAIR: "Please wait – we're connecting",
+  COMM: "Connected"
+};
+
+// Placeholder for the NinebotCrypto JS port
+import { NinebotCrypto } from './NinebotCrypto.js'; // deine JS-Portierung
+
+let crypto = null;
+let connectedDevice = null;
+
+// Scan available devices
+document.getElementById('scanBtn').addEventListener('click', async () => {
+    const select = document.getElementById('deviceSelect');
+    select.innerHTML = '';
+
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
+        });
+
+        const option = document.createElement('option');
+        option.value = device.name;
+        option.text = device.name;
+        select.appendChild(option);
+    } catch (err) {
+        console.error('Scan failed', err);
+    }
+});
+
+// Connect to selected device
+document.getElementById('connectBtn').addEventListener('click', async () => {
+    const deviceName = document.getElementById('deviceSelect').value;
+    const statusEl = document.getElementById('status');
+
+    if (!deviceName) return alert('Select a device first!');
+
+    statusEl.innerText = stateMessages.PRE;
+
+    try {
+        connectedDevice = await navigator.bluetooth.requestDevice({
+            filters: [{ name: deviceName }],
+            optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
+        });
+
+        const server = await connectedDevice.gatt.connect();
+        const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
+
+        const writeChar = await service.getCharacteristic('6E400002-B5A3-F393-E0A9-E50E24DCCA9E');
+        const notifyChar = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+
+        // Initialize Crypto with device name
+        crypto = new NinebotCrypto(deviceName);
+
+        // Enable notifications
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', (event) => {
+            const data = new Uint8Array(event.target.value.buffer);
+            const decrypted = crypto.Decrypt(data);
+
+            // Battery update (angepasst an typisches Ninebot-Protokoll)
+            if (decrypted[0] === 0x5A && decrypted[1] === 0xA5) {
+                const batteryLevel = decrypted[7]; // Index je nach Protokoll prüfen
+                document.getElementById('battery').innerText = `Battery: ${batteryLevel}%`;
+            }
+
+            console.log('Received decrypted:', decrypted);
+        });
+
+        statusEl.innerText = stateMessages.COMM;
+        console.log('Connected to', deviceName);
+
+    } catch (err) {
+        console.error('Connection failed', err);
+        statusEl.innerText = 'Connection failed';
+    }
+});
+
+// Helper: send encrypted data
+async function sendEncrypted(writeChar, payload) {
+    if (!crypto) throw new Error('Crypto not initialized');
+    const encrypted = crypto.Encrypt(payload);
+    await writeChar.writeValue(new Uint8Array(encrypted));
+}
+</script>
+
+</body>
+</html>
