@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ninebot BLE Control v0.1</title>
+<title>Ninebot BLE Control v0.11</title>
 <style>
   body {
     font-family: Arial, sans-serif;
@@ -14,7 +14,7 @@
     align-items: center;
     padding: 2rem;
   }
-  select, button {
+  button {
     margin: 1rem 0;
     padding: 0.5rem 1rem;
     font-size: 1rem;
@@ -33,76 +33,61 @@
 </head>
 <body>
 
-<h1>Ninebot BLE Control</h1>
+<h1>Ninebot BLE Control v0.11</h1>
 
-<select id="deviceSelect"></select>
-<button id="scanBtn">Scan Devices</button>
-<button id="connectBtn">Connect</button>
+<button id="selectDeviceBtn">Select Device</button>
+<button id="connectBtn" disabled>Connect</button>
 
 <div id="status"></div>
 <div id="battery">Battery: --%</div>
 
 <script type="module">
-// State messages
+import { NinebotCrypto } from './NinebotCrypto.js';
+
 const stateMessages = {
   PRE: "Tap the power button on your scooter.",
   COMM: "Connected"
 };
 
-// Import Crypto class (füge deine NinebotCrypto.js Datei hinzu)
-import { NinebotCrypto } from './NinebotCrypto.js';
-
 let crypto = null;
 let connectedDevice = null;
-let writeChar, notifyChar;
+let writeChar = null;
+let notifyChar = null;
 
-// Scan devices
-document.getElementById('scanBtn').addEventListener('click', async () => {
-  const select = document.getElementById('deviceSelect');
-  select.innerHTML = '';
+// Speicher für ausgewähltes Gerät
+let selectedDevice = null;
+
+// Bluefy-kompatibles Gerät auswählen
+document.getElementById('selectDeviceBtn').addEventListener('click', async () => {
   try {
-    let device;
-    if (navigator.userAgent.includes("Bluefy")) {
-      device = await navigator.bluetooth.selectDevice({
-        filters: [{ services: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E'] }]
-      });
-    } else {
-      device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
-      });
-    }
+    selectedDevice = await navigator.bluetooth.selectDevice({
+      filters: [{ services: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E'] }]
+    });
 
-    const option = document.createElement('option');
-    option.value = device.name;
-    option.text = device.name;
-    select.appendChild(option);
+    document.getElementById('status').innerText = `Selected: ${selectedDevice.name}`;
+    document.getElementById('connectBtn').disabled = false;
+
   } catch(err) {
-    console.error('Scan failed', err);
+    console.error('Select device failed', err);
+    document.getElementById('status').innerText = 'Device selection canceled';
   }
 });
 
-// Connect to selected device
+// Mit ausgewähltem Gerät verbinden
 document.getElementById('connectBtn').addEventListener('click', async () => {
-  const deviceName = document.getElementById('deviceSelect').value;
   const statusEl = document.getElementById('status');
-  if (!deviceName) return alert('Select a device first!');
+  if (!selectedDevice) return alert('Select a device first!');
 
   statusEl.innerText = stateMessages.PRE;
 
   try {
-    connectedDevice = await navigator.bluetooth.requestDevice({
-      filters: [{ name: deviceName }],
-      optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
-    });
-
-    const server = await connectedDevice.gatt.connect();
+    const server = await selectedDevice.gatt.connect();
     const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
 
     writeChar = await service.getCharacteristic('6E400002-B5A3-F393-E0A9-E50E24DCCA9E');
     notifyChar = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
 
-    crypto = new NinebotCrypto(deviceName);
+    crypto = new NinebotCrypto(selectedDevice.name);
 
     await notifyChar.startNotifications();
     notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
@@ -117,7 +102,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
     });
 
     statusEl.innerText = stateMessages.COMM;
-    console.log('Connected to', deviceName);
+    console.log('Connected to', selectedDevice.name);
 
   } catch(err) {
     console.error('Connection failed', err);
@@ -125,7 +110,7 @@ document.getElementById('connectBtn').addEventListener('click', async () => {
   }
 });
 
-// Helper to send encrypted data
+// Hilfsfunktion: verschlüsselte Daten senden
 async function sendEncrypted(payload) {
   if (!crypto || !writeChar) throw new Error('Crypto or write characteristic not initialized');
   const encrypted = await crypto.Encrypt(payload);
