@@ -3,41 +3,107 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ninebot BLE Control</title>
+<title>Ninebot Web Tuning BLE</title>
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background-color: #121212;
-    color: #f5f5f5;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 2rem;
-  }
-  button {
-    margin: 1rem 0;
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-  }
-  #status {
-    margin-top: 1rem;
-    font-weight: bold;
-    color: #ff9800;
-  }
-  #battery {
-    margin-top: 0.5rem;
-    font-weight: bold;
-    color: #4caf50;
-  }
+:root {
+  color-scheme: dark;
+  --bg-color: #121212;
+  --card-bg: #1e1e1e;
+  --accent: #4caf50;
+  --accent-dark: #43a047;
+  --text: #f0f0f0;
+  --text-muted: #aaaaaa;
+}
+body {
+  background: radial-gradient(circle at center, #1c1c1c 0%, #121212 100%);
+  color: var(--text);
+  font-family: 'Segoe UI', sans-serif;
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+main {
+  background-color: var(--card-bg);
+  padding: 2.5rem 2rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+h2 {
+  font-size: 1.8rem;
+  margin-bottom: 1.2rem;
+}
+button {
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  border-radius: 10px;
+  border: none;
+  background-color: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+button:hover {
+  background-color: var(--accent-dark);
+}
+#status {
+  margin-top: 1rem;
+  font-weight: bold;
+  color: #ff9800;
+}
+#battery {
+  margin-top: 0.5rem;
+  font-weight: bold;
+  color: #4caf50;
+}
+#summary { display: none; margin-top: 1rem; text-align: left; }
+#summary h4 { color: var(--accent); margin-bottom: 0.5rem; }
+#summary ul { list-style: none; padding: 0; margin: 0; }
+#summary li { margin-bottom: 0.25rem; }
+#overlay, #errorOverlay {
+  position: fixed; top:0; left:0; right:0; bottom:0;
+  background-color: rgba(18,18,18,0.9);
+  display: none; align-items:center; justify-content:center;
+  z-index:1000;
+}
+.overlay .content {
+  background-color: #1e1e1e; padding:2rem; border-radius:12px; text-align:center;
+}
 </style>
 </head>
 <body>
 
-<h1>Ninebot BLE Controlz</h1>
-<button id="connectBtn">Scan & Connect Device</button>
+<main>
+  <h2>Ninebot Web Tuning BLE</h2>
+  <button id="connectBtn">Scan & Connect Device</button>
+  <div id="status"></div>
+  <div id="battery">Battery: --%</div>
 
-<div id="status"></div>
-<div id="battery">Battery: --%</div>
+  <section id="summary">
+    <h4>Device Info</h4>
+    <ul>
+      <li><strong>Name:</strong> <span id="devName">—</span></li>
+      <li><strong>Serial:</strong> <span id="devSerial">—</span></li>
+      <li><strong>Model:</strong> <span id="devModel">—</span></li>
+    </ul>
+  </section>
+</main>
+
+<div id="overlay" class="overlay"><div class="content">
+  <h3>Processing...</h3>
+</div></div>
+
+<div id="errorOverlay" class="overlay"><div class="content">
+  <h3>Error</h3>
+  <p id="errorMessage">Something went wrong.</p>
+  <button onclick="document.getElementById('errorOverlay').style.display='none'">OK</button>
+</div></div>
 
 <script type="module">
 import { NinebotCrypto } from './NinebotCrypto.js';
@@ -48,54 +114,61 @@ let writeChar = null;
 let notifyChar = null;
 
 document.getElementById('connectBtn').addEventListener('click', async () => {
-    const statusEl = document.getElementById('status');
-    statusEl.innerText = 'Scanning for devices...';
+  const statusEl = document.getElementById('status');
+  statusEl.innerText = 'Scanning for devices...';
 
-    try {
-        // Bluefy zeigt automatisch das native Gerätemenü an
-        connectedDevice = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
-        });
+  try {
+    connectedDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['6E400001-B5A3-F393-E0A9-E50E24DCCA9E']
+    });
 
-        statusEl.innerText = `Connecting to ${connectedDevice.name || connectedDevice.id}...`;
+    statusEl.innerText = `Connecting to ${connectedDevice.name || connectedDevice.id}...`;
 
-        const server = await connectedDevice.gatt.connect();
-        const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
+    const server = await connectedDevice.gatt.connect();
+    const service = await server.getPrimaryService('6E400001-B5A3-F393-E0A9-E50E24DCCA9E');
 
-        writeChar = await service.getCharacteristic('6E400002-B5A3-F393-E0A9-E50E24DCCA9E');
-        notifyChar = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
+    writeChar = await service.getCharacteristic('6E400002-B5A3-F393-E0A9-E50E24DCCA9E');
+    notifyChar = await service.getCharacteristic('6E400003-B5A3-F393-E0A9-E50E24DCCA9E');
 
-        crypto = new NinebotCrypto(connectedDevice.name || connectedDevice.id);
+    crypto = new NinebotCrypto(connectedDevice.name || connectedDevice.id);
 
-        await notifyChar.startNotifications();
-        notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
-            const data = new Uint8Array(event.target.value.buffer);
-            const decrypted = await crypto.Decrypt(data);
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
+      const data = new Uint8Array(event.target.value.buffer);
+      const decrypted = await crypto.Decrypt(data);
 
-            if (decrypted[0] === 0x5A && decrypted[1] === 0xA5) {
-                const batteryLevel = decrypted[7];
-                document.getElementById('battery').innerText = `Battery: ${batteryLevel}%`;
-            }
+      if (decrypted[0] === 0x5A && decrypted[1] === 0xA5) {
+        const batteryLevel = decrypted[7];
+        document.getElementById('battery').innerText = `Battery: ${batteryLevel}%`;
+      }
 
-            console.log('Received decrypted:', decrypted);
-        });
+      // Hier kann man weitere BLE-Daten verarbeiten
+      console.log('Received decrypted:', decrypted);
+    });
 
-        statusEl.innerText = 'Connected!';
-        console.log('Connected to', connectedDevice.name);
+    statusEl.innerText = 'Connected!';
+    console.log('Connected to', connectedDevice.name);
 
-    } catch(err) {
-        console.error('Connection failed', err);
-        statusEl.innerText = 'Connection failed';
-        alert('No device selected or connection failed.');
-    }
+    // Optional: Summary anzeigen
+    document.getElementById('summary').style.display = 'block';
+    document.getElementById('devName').innerText = connectedDevice.name || 'Unknown';
+    document.getElementById('devSerial').innerText = connectedDevice.id || '—';
+    document.getElementById('devModel').innerText = 'Unknown';
+
+  } catch(err) {
+    console.error('Connection failed', err);
+    statusEl.innerText = 'Connection failed';
+    document.getElementById('errorMessage').innerText = 'No device selected or connection failed.';
+    document.getElementById('errorOverlay').style.display = 'flex';
+  }
 });
 
 // Helper: send encrypted data
 async function sendEncrypted(payload) {
-    if (!crypto || !writeChar) throw new Error('Crypto or write characteristic not initialized');
-    const encrypted = await crypto.Encrypt(payload);
-    await writeChar.writeValue(new Uint8Array(encrypted));
+  if (!crypto || !writeChar) throw new Error('Crypto or write characteristic not initialized');
+  const encrypted = await crypto.Encrypt(payload);
+  await writeChar.writeValue(new Uint8Array(encrypted));
 }
 </script>
 
